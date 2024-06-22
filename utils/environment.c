@@ -16,6 +16,7 @@ Canvas *initCanvas(uint8_t numRows, uint8_t numCols, char empty) {
     Canvas *canvas = malloc(sizeof(Canvas));
     canvas->numRows = numRows;
     canvas->numCols = numCols;
+    pthread_mutex_init(&canvas->state.lock, NULL);  
 
     if (!empty || empty == '\n' || empty == '\r' || empty == '\0') {
         empty = ' ';
@@ -83,6 +84,8 @@ Entity **createText(char *text, uint8_t startX, uint8_t startY, Color color, siz
 Entity *createButton(char c, uint8_t x, uint8_t y) {
     Color defaultColor = {255, 255, 255};
     Entity *entity = createEntity(BUTTON, c, x, y, 0, defaultColor);
+    entity->isAlive = 1;
+
     return entity;
 }
 
@@ -91,8 +94,10 @@ void deleteEntity(Entity *entity) {
 }
 
 void addEntity(Canvas *canvas, Entity *entity) {
+    pthread_mutex_lock(&canvas->state.lock);
     canvas->state.entities = realloc(canvas->state.entities, (canvas->state.entityCount + 1) * sizeof(Entity *));
     canvas->state.entities[canvas->state.entityCount++] = entity;
+    pthread_mutex_unlock(&canvas->state.lock);
 }
 
 void drawEntities(Canvas *canvas) {
@@ -103,6 +108,7 @@ void drawEntities(Canvas *canvas) {
         }
     }
 
+    pthread_mutex_lock(&canvas->state.lock);
     for (size_t i = 0; i < canvas->state.entityCount; i++) {
         Entity *entity = canvas->state.entities[i];
         if (entity->isAlive) {
@@ -110,6 +116,7 @@ void drawEntities(Canvas *canvas) {
             canvas->state.colors[entity->cell.pos.y][entity->cell.pos.x] = entity->cell.color;
         }
     }
+    pthread_mutex_unlock(&canvas->state.lock);
 }
 
 void printCanvas(Canvas *canvas) {
@@ -137,94 +144,109 @@ void setRawMode(int enable) {
 int kbhit(void) {
     int bytesWaiting;
     ioctl(STDIN_FILENO, FIONREAD, &bytesWaiting);
-    return bytesWaiting > 0;
+    return bytesWaiting;
 }
 
 void handleSignal(int signum) {
-    setRawMode(0);
-    printf("\nExiting...\n");
-    exit(signum);
+    if (signum == SIGINT) {
+        exit(0);
+    }
 }
 
 void handleFrameUpdate(int signum) {
-    frameFlag = 1;
+    if (signum == SIGALRM) {
+        frameFlag = 1;
+    }
 }
 
 void setupFrameTimer(int frameRate) {
-    struct sigaction sa;
     struct itimerval timer;
-
-    sa.sa_handler = &handleFrameUpdate;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-
-    sigaction(SIGALRM, &sa, NULL);
-
+    signal(SIGALRM, handleFrameUpdate);
     timer.it_value.tv_sec = 0;
     timer.it_value.tv_usec = 1000000 / frameRate;
     timer.it_interval.tv_sec = 0;
     timer.it_interval.tv_usec = 1000000 / frameRate;
-
     setitimer(ITIMER_REAL, &timer, NULL);
 }
 
 void updateEntity(Entity *entity, Pos pos, Pos vel) {
-    entity->cell.pos.x += vel.x;
-    entity->cell.pos.y += vel.y;
+    entity->cell.pos.x = pos.x;
+    entity->cell.pos.y = pos.y;
 }
 
 void movePlayer(Canvas *canvas, Entity *player, char dir) {
     Pos newPos = player->cell.pos;
-
-    switch (dir) {
-        case 'w':
-            newPos.y -= 1;
-            break;
-        case 'a':
-            newPos.x -= 1;
-            break;
-        case 's':
-            newPos.y += 1;
-            break;
-        case 'd':
-            newPos.x += 1;
-            break;
+    if (dir == 'w' && newPos.y > 1) {
+        newPos.y--;
+    } else if (dir == 's' && newPos.y < canvas->numRows - 2) {
+        newPos.y++;
+    } else if (dir == 'a' && newPos.x > 1) {
+        newPos.x--;
+    } else if (dir == 'd' && newPos.x < canvas->numCols - 2) {
+        newPos.x++;
     }
+    updateEntity(player, newPos, (Pos){0, 0});
+}
 
-    if (newPos.x < 1 || newPos.x >= canvas->numCols - 1 || newPos.y < 1 || newPos.y >= canvas->numRows - 1) {
+void moveEntity(Canvas *canvas, Entity *entity, Pos vel) {
+    if (!entity->isAlive) {
         return;
     }
 
-    player->cell.pos = newPos;
+    Pos oldPos = entity->cell.pos;
+    oldPos.x += vel.x;
+    oldPos.y += vel.y;
 }
 
 void moveEnemy(Canvas *canvas, Entity *enemy) {
-    uint8_t choice = rand() % 4;
-    switch (choice) {
-        case 0:
-            if (enemy->cell.pos.x + 1 < canvas->numCols - 1 && enemy->cell.pos.y + 1 < canvas->numRows - 1) {
-                enemy->cell.pos.x++;
-                enemy->cell.pos.y++;
-            }
-            break;
-        case 1:
-            if (enemy->cell.pos.x + 1 < canvas->numCols - 1 && enemy->cell.pos.y - 1 > 0) {
-                enemy->cell.pos.x++;
-                enemy->cell.pos.y--;
-            }
-            break;
-        case 2:
-            if (enemy->cell.pos.x - 1 > 0 && enemy->cell.pos.y - 1 > 0) {
-                enemy->cell.pos.x--;
-                enemy->cell.pos.y--;
-            }
-            break;
-        case 3:
-            if (enemy->cell.pos.x - 1 > 0 && enemy->cell.pos.y + 1 < canvas->numRows - 1) {
-                enemy->cell.pos.x--;
-                enemy->cell.pos.y++;
-            }
-            break;
+    if (!enemy->isAlive) {
+        return;
     }
+
+    Pos newPos = enemy->cell.pos;
+    int8_t dx = (rand() % 3) - 1; 
+    int8_t dy = (rand() % 3) - 1;
+
+    newPos.x += dx;
+    newPos.y += dy;
+
+    if (newPos.x > 0 && newPos.x < canvas->numCols - 1) {
+        enemy->cell.pos.x = newPos.x;
+    }
+    if (newPos.y > 0 && newPos.y < canvas->numRows - 1) {
+        enemy->cell.pos.y = newPos.y;
+    }
+}
+
+void* entityThreadFunc(void* arg) {
+    EntityThreadArgs *args = (EntityThreadArgs*)arg;
+    uint8_t frameRate = (uint8_t)(uintptr_t)args->entity->buff.data;
+    Canvas *canvas = args->canvas;
+    Entity *entity = args->entity;
+
+    while (entity->isAlive) {
+        if (entity->type == ENEMY) {
+            moveEnemy(canvas, entity); 
+        }
+        usleep(1000000 / frameRate);  
+    }
+
+    free(args);  
+    return NULL;
+}
+
+void initializeEntityThreads(Canvas *canvas, uint8_t frameRate) {
+    pthread_mutex_lock(&canvas->state.lock);
+    for (size_t i = 0; i < canvas->state.entityCount; i++) {
+        Entity *entity = canvas->state.entities[i];
+        if (entity->type == ENEMY) {
+            EntityThreadArgs *args = malloc(sizeof(EntityThreadArgs));
+            args->canvas = canvas;
+            args->entity = entity;
+            args->entity->buff.data = (void *)(uintptr_t)frameRate; 
+            pthread_create(&args->entity->buff.thread, NULL, entityThreadFunc, (void *)args);
+        }
+    }
+    pthread_mutex_unlock(&canvas->state.lock);
 }
 

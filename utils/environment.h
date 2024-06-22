@@ -23,8 +23,20 @@ typedef struct {
 } Cell;
 
 typedef struct {
+    int fd;
+    int read;
+    int write;
+    int execute;
+    int pos;
+    int end;
+} Channel;
+
+typedef struct {
     void *data;
     pthread_t thread;
+    Channel *in;
+    Channel *out;
+    Channel *err;
 } Buffer;
 
 typedef enum {
@@ -47,6 +59,7 @@ typedef struct {
     Color **colors;
     Entity **entities;
     size_t entityCount;
+    pthread_mutex_t lock; 
 } State;
 
 typedef struct {
@@ -54,6 +67,11 @@ typedef struct {
     uint8_t numCols;
     State state;
 } Canvas;
+
+typedef struct {
+    Canvas *canvas;
+    Entity *entity;
+} EntityThreadArgs;
 
 Canvas *initCanvas(uint8_t numRows, uint8_t numCols, char empty);
 Entity *createEntity(Type type, char c, uint8_t x, uint8_t y, uint8_t health, Color color);
@@ -69,8 +87,11 @@ void handleSignal(int signum);
 void handleFrameUpdate(int signum);
 void setupFrameTimer(int frameRate);
 void updateEntity(Entity *entity, Pos pos, Pos vel);
+void moveEntity(Canvas *canvas, Entity *entity, Pos vel);
 void movePlayer(Canvas *canvas, Entity *player, char dir);
 void moveEnemy(Canvas *canvas, Entity *enemy);
+void* entityThreadFunc(void* arg); 
+void initializeEntityThreads(Canvas *canvas, uint8_t frameRate); 
 
 extern int pipe_fd[2];
 extern volatile sig_atomic_t frameFlag;
