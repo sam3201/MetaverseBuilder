@@ -1,9 +1,9 @@
 # MetaverseBuilder
 sim
 
-
-
-
+commands to run (game) 
+sh build.sh 
+game 
 
 
 
