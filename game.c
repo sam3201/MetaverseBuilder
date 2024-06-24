@@ -1,77 +1,92 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <time.h>
-#include <signal.h>
 #include <pthread.h>
+#include <string.h>
+#include <signal.h>
+#include <unistd.h>
+#include "utils/NN.h"
 #include "utils/environment.h"
 
-int gameLoop() {
-    signal(SIGINT, handleSignal);
-    srand((unsigned)time(NULL));
+int run(uint8_t frameRate, uint8_t rows, uint8_t cols, uint8_t entityCount, Color enemyColor, Color playerColor) {
+  signal(SIGINT, handleSignal);
+  srand((unsigned)time(NULL));
+  
+  Canvas *canvas = initCanvas(rows, cols, ' ');
+  if (!canvas) {
+    fprintf(stderr, "Failed to initialize canvas\n");
+    return 1;
+  }
 
-    uint8_t frameRate = 30;
+  drawBorder(canvas);
 
-    uint8_t rows = 20;
-    uint8_t cols = 50;
-    Canvas *canvas = initCanvas(rows, cols, ' ');
-
-    Color playerColor = {75, 2, 90};
-    Entity *player = createEntity(PLAYER, 'o', cols / 2, rows / 2, 100, playerColor);
+  Entity *player = createEntity(PLAYER, 'o', cols / 2, rows / 2, 3, playerColor, movePlayer);
+  if (player) {
     addEntity(canvas, player);
+  } else {
+    fprintf(stderr, "Failed to create player entity\n");
+    return 1;
+    
+  }
 
-    Color enemyColor = {0, 255, 0};
-    uint8_t entityCount = 3;
-    for (int i = 0; i < entityCount; i++) {
-        Entity *enemy = createEntity(ENEMY, 'X', rand() % cols, rand() % rows, 3, enemyColor);
-        addEntity(canvas, enemy);
+  for (int i = 0; i < entityCount; i++) {
+    Entity *enemy = createEntity(ENEMY, 'X', (rand() % (cols - 2)) + 1, (rand() % (rows - 2)) + 1, 3, enemyColor, moveEnemy);        
+    if (enemy) {
+      addEntity(canvas, enemy);
+    } else {
+      fprintf(stderr, "Failed to create enemy entity\n");
     }
+  }
 
-    char *text = "WASD: Move, Q: Quit";
-    Color textColor = {0, 255, 255};
-    size_t textEntityCount = strlen(text);
-    Entity **textEntities = createText(text, 0, 0, textColor, &textEntityCount);
-    for (size_t i = 0; i < textEntityCount; i++) {
-        addEntity(canvas, textEntities[i]);
+  char *title = "Game - WASD to move, Q to quit";
+  Color titleColor = {0, 255, 255};
+  size_t titleLength = strlen(title);
+  Entity **titleText = createText(title, 1, 1, titleColor, &titleLength);
+  if (titleText) {
+    for (size_t i = 0; i < titleLength; i++) {
+      addEntity(canvas, titleText[i]);
     }
+    free(titleText);  
+  } else {
+    fprintf(stderr, "Failed to create title text\n");
+  }
 
-    setRawMode(1);
-    setupFrameTimer(frameRate);
+  setRawMode(1);
+  setupFrameTimer(frameRate);
+  initializeEntityThreads(ENEMY, canvas, frameRate);
+  initializeEntityThreads(PLAYER, canvas, frameRate);
 
-    initializeEntityThreads(canvas, frameRate);
-
-    while (1) {
-        if (frameFlag) {
-            frameFlag = 0;
-
-            if (kbhit()) {
-                char c = getchar();
-                if (c == 'q') {
-                    break;
-                }
-                movePlayer(canvas, player, c);
-            }
-
-            drawEntities(canvas);
-            printf("\033[H\033[J");
-            printCanvas(canvas);
+  while (1) {
+    if (frameFlag) {
+      frameFlag = 0;
+      if (kbhit()) {
+        char c = getchar();
+        if (c == 'q') {
+          break;
         }
-    }
+        movePlayer(canvas, player, c);
 
-    setRawMode(0);
-    for (size_t i = 0; i < canvas->state.entityCount; i++) {
-        canvas->state.entities[i]->isAlive = 0;
-        pthread_join(canvas->state.entities[i]->buff.thread, NULL);
-        free(canvas->state.entities[i]);
-    }
+      }
 
-    return 0;
+      drawEntities(canvas);
+      drawBorder(canvas);
+      printf("\033[H");  
+      printCanvas(canvas);
+    }
+    usleep(1000 / frameRate);
+  }
+
+  setRawMode(0);
+
+  for (size_t i = 0; i < canvas->state.entityCount; i++) {
+    canvas->state.entities[i]->isAlive = 0;
+    pthread_join(canvas->state.entities[i]->thread, NULL);
+  }
+
+  freeCanvas(canvas);
+
+  return 0;
 }
 
-int main() {
-    gameLoop();
-
-    return 0;
+int main(void) {
+  return run(60, 40, 50, 5, (Color){0, 255, 0}, (Color){82, 0, 95});
 }
-

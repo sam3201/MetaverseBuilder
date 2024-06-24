@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 #include <pthread.h>
+#include <time.h>
 #include <signal.h>
+#include <sys/time.h>
 
 typedef struct {
     uint8_t r;
@@ -40,22 +42,24 @@ typedef struct {
 } Buffer;
 
 typedef enum {
-    PLAYER = 0,
-    ENEMY = 1,
+    PLAYER = 1,
+    ENEMY = 2,
+    ELEMENT = 0,
     TENSOR = -1,
     MATRIX = -2,
     VECTOR = -3,
-    BUTTON = 2,
-    TEXT = 3,
+    BUTTON = 3,
+    TEXT = 4,
 } Type;
 
-typedef struct {
+typedef struct Entity {
     Type type;
     uint8_t health;
     int8_t isAlive;
     Cell cell;
-    Buffer buff;
     Color color;
+    pthread_t thread;
+    void (*moveFunc)(struct Canvas *canvas, struct Entity *entity);
 } Entity;
 
 typedef struct {
@@ -63,39 +67,62 @@ typedef struct {
     Color **colors;
     Entity **entities;
     size_t entityCount;
-    pthread_mutex_t lock; 
+    pthread_mutex_t lock;
 } State;
 
-typedef struct {
+typedef struct Canvas {
     uint8_t numRows;
     uint8_t numCols;
     State state;
 } Canvas;
 
-typedef struct {
+typedef struct EntityThreadArgs {
     Canvas *canvas;
     Entity *entity;
+    void (*moveFunc)(Canvas *canvas, Entity *entity);
 } EntityThreadArgs;
 
+typedef struct {
+  struct timespec lastUpdate;
+  double deltaTime;
+  double fixed_deltaTime;
+  unsigned int frameCount;
+} Clock;
+
+
+void setRawMode(int8_t enable);
+int kbhit(void);
+void handleSignal(int signum);
+void handleFrameUpdate(int signum);
+void setupFrameTimer(int frameRate);
+
 Canvas *initCanvas(uint8_t numRows, uint8_t numCols, char empty);
-Entity *createEntity(Type type, char c, uint8_t x, uint8_t y, uint8_t health, Color color);
+void drawBorder(Canvas *canvas);
+void setColor(Color color);
+void resetColor();
+
+void printCanvas(Canvas *canvas);
+
+void initClock(Clock *clock, double fixed_update_rate);
+void updateClock(Clock *clock);
+int8_t fixedUpdateReady(Clock *clock);
+
+Entity *createEntity(Type type, char c, uint8_t x, uint8_t y, uint8_t health, Color color, void (*moveFunc)(Canvas *canvas, Entity *entity));
 Entity **createText(char *text, uint8_t startX, uint8_t startY, Color color, size_t *entityCount);
 Entity *createButton(char c, uint8_t x, uint8_t y);
 void deleteEntity(Entity *entity);
 void addEntity(Canvas *canvas, Entity *entity);
 void drawEntities(Canvas *canvas);
-void printCanvas(Canvas *canvas);
-void setRawMode(int enable);
-int kbhit(void);
-void handleSignal(int signum);
-void handleFrameUpdate(int signum);
-void setupFrameTimer(int frameRate);
+
 void updateEntity(Entity *entity, Pos pos, Pos vel);
+
 void moveEntity(Canvas *canvas, Entity *entity, Pos vel);
 void movePlayer(Canvas *canvas, Entity *player, char dir);
 void moveEnemy(Canvas *canvas, Entity *enemy);
-void* entityThreadFunc(void* arg); 
-void initializeEntityThreads(Canvas *canvas, uint8_t frameRate); 
+
+void* entityThreadFunc(void* arg);
+void initializeEntityThreads(Type type, Canvas *canvas, uint8_t frameRate);
+void freeCanvas(Canvas *canvas);
 
 extern int pipe_fd[2];
 extern volatile sig_atomic_t frameFlag;

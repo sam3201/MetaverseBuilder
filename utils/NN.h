@@ -63,7 +63,6 @@ typedef struct {
    
 } Element; 
 
-
 Vector *vector_new(Matrix *Parent, size_t size, void *data); 
 Vector *vector_push(Vector *vector, void *data);
 Vector *dynamic_vector_push(Vector *vector, unsigned int idx, void *data, float *argv); 
@@ -84,6 +83,8 @@ Element *procreate(Element *a, Element *b);
 Element *new_element(Canvas *canvas, Entity *entity);
 Element *new_attribute(Element *element, char *key, void *value);
 Element *new_property(Element *element, char *key, void *value);
+double *sum_element(Element *element);
+Element *update(Element *element);
 
 #endif
 

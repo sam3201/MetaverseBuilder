@@ -1,9 +1,52 @@
 #!/bin/bash
 
-read -p "sim or game " file 
+read -p "Enter 'sim', 'game', 'server', or 'client': " file
 
-case "$file" in "game") gcc -o game game.c utils/environment.c  -lpthread  > output.txt && ./game && rm game && exit 1;; esac 
-case "$file" in "sim") gcc -o sim sim.c utils/NN.c -lpthread && ./sim && rm sim && exit 1 ;; esac 
-case "$file" in "server") gcc -o server utils/server.c -pthread && ./server 127.0.0.1 42069 && rm server && exit 1 ;; esac
-case "$file" in "client") gcc -o client utils/client.c -pthread && ./client 127.0.0.1 42069 && rm client && exit 1 ;; esac
-case "$file" in *) echo "Invalid Option: $file" && exit 1 ;; esac
+if [ -z "$file" ]; then
+    echo "No input provided. Exiting."
+    exit 1
+fi
+
+case "$file" in
+  "game")
+    gcc game.c -o game utils/environment.c utils/NN.c -lpthread
+    if [ $? -eq 0 ]; then
+      ./game
+      rm game
+    else
+      echo "Compilation failed for game."
+    fi
+    ;;
+  "sim")
+    gcc sim.c -o sim utils/environment.c utils/NN.c -lpthread -lm
+    if [ $? -eq 0 ]; then
+      ./sim
+      rm sim
+    else
+      echo "Compilation failed for sim."
+    fi
+    ;;
+  "server")
+    gcc -server.c -o server - utils/server.c -pthread
+    if [ $? -eq 0 ]; then
+      ./server 127.0.0.1 42069
+      rm server
+    else
+      echo "Compilation failed for server."
+    fi
+    ;;
+  "client")
+    gcc client.c -o client utils/client.c -pthread
+    if [ $? -eq 0 ]; then
+      ./client 127.0.0.1 42069
+      rm client
+    else
+      echo "Compilation failed for client."
+    fi
+    ;;
+  *)
+    echo "Invalid Option: $file"
+    exit 1
+    ;;
+esac
+
