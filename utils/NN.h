@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "environment.h"
 
 typedef struct Matrix Matrix;
 
@@ -14,98 +15,14 @@ typedef struct {
     Matrix *parent; 
 } Vector;
 
-Vector *vector_new(Matrix *Parent, size_t size, void *data) {
-    Vector *vector = (Vector*)malloc(sizeof(Vector));
-    vector->index = 0;
-    vector->size = size;
-    vector->parent = Parent;
-    vector->data = (void**)malloc(size * sizeof(void *)); 
-
-    for (size_t i = 0; i < size; i++) {
-        vector->data[i] = data;
-    }
-
-    return vector; 
-}
-
-Vector *vector_push(Vector *vector, void *data) {
-    size_t new_size = vector->size + 1;
-    vector->data = (void**)realloc(vector->data, new_size * sizeof(void*));
-    vector->data[vector->size] = data;
-    vector->size = new_size;
-
-    return vector;
-}
-
-Vector *dynamic_vector_push(Vector *vector, unsigned int idx, void *data, float *argv) {
-    if (idx >= vector->size) {
-        size_t new_size = idx + 1; 
-        vector->data = (void**)realloc(vector->data, new_size * sizeof(void*)); 
-        for (size_t i = vector->size; i < new_size; i++) {
-            vector->data[i] = (argv && argv[i] != 0.0f) ? &argv[i] : NULL;
-        }
-        vector->size = new_size;
-    }
-
-    vector = vector_push(vector, data);
-    return vector;
-}
-
-void *vector_pop(Vector *vector) {   
-    if (vector->size == 0) {
-        return NULL;
-    }
-    vector->size--;
-    void *data = vector->data[vector->size];
-    vector->data[vector->size] = NULL; // Ensure the popped element is set to NULL
-    return data;
-}
-
-Vector *vector_free(Vector *vector) {
-    free(vector->data);
-    free(vector);
-    return NULL;
-}
-
 typedef struct Matrix {
     int index;
     size_t size; 
     Vector **vectors;
 } Matrix;
 
-Matrix *matrix_new(Vector **argv) {
-    Matrix *matrix = (Matrix*)malloc(sizeof(Matrix));
-    matrix->index = 0;
-    matrix->size = 0;
-
-    if (argv == NULL) {
-        Vector *vector = vector_new(matrix, 0, NULL);
-        vector->index = 0;
-        vector->size = 0;
-        vector->data = NULL; 
-        matrix->vectors = &vector; 
-        matrix->size = 1;
-    } else {
-        matrix->vectors = argv;
-        // Assuming argv is NULL terminated for the example
-        while (argv[matrix->size] != NULL) {
-            matrix->size++;
-        }
-    }
-
-    return matrix;
-}
-
-Matrix *matrix_free(Matrix *matrix) {
-    for (size_t i = 0; i < matrix->size; i++) {
-        vector_free(matrix->vectors[i]);
-    }
-    free(matrix->vectors);
-    free(matrix);
-    return NULL;
-}
-
 typedef struct {
+    int index;
     size_t size;
     Matrix **matrices; 
     union {
@@ -122,38 +39,51 @@ typedef struct {
     } MetaOperands;
 } Tensor;
 
-Tensor *tensor_new(size_t size) {
-    Tensor *tensor = (Tensor*)malloc(sizeof(Tensor));
-    tensor->size = size;
-    tensor->matrices = (Matrix**)malloc(size * sizeof(Matrix*));
 
-    for (size_t i = 0; i < size; i++) {
-        tensor->matrices[i] = matrix_new(NULL);
-    }
+typedef struct {
+  Entity *affected; 
+  float force; 
 
-    return tensor;
-}
+} Gravity;
 
-Tensor *tensor_free(Tensor *tensor) {
-    for (size_t i = 0; i < tensor->size; i++) {
-        matrix_free(tensor->matrices[i]);
-    }
-    free(tensor->matrices);
-    free(tensor);
-    return NULL;
-}
+typedef struct {
+  Canvas *canvas;
+  Gravity **totalGravity;
+  float GravitionalCollapseFactor;
+  clock_t start, end;
+} Environment;  
 
-void tensor_interact_with_environment(Tensor *tensor, void *environment) {
-    // Implementation of interaction logic
-    // This function should handle how the tensor interacts with its environment
-    // and propagate changes to its matrices and vectors
-}
+typedef struct {
+  unsigned int index;
+  Entity *entity;
+  float mass;
+  float weight;
+  uint8_t diameter;
+  Tensor *tensor;
+   
+} Element; 
 
-void tensor_procreate(Tensor *parent_a, Tensor *parent_b, Tensor **offspring) {
-    // Implementation of tensor procreation logic
-    // This function should create new tensors based on the genetic combination
-    // of parent_a and parent_b
-}
+
+Vector *vector_new(Matrix *Parent, size_t size, void *data); 
+Vector *vector_push(Vector *vector, void *data);
+Vector *dynamic_vector_push(Vector *vector, unsigned int idx, void *data, float *argv); 
+void *vector_pop(Vector *vector);
+Matrix *matrix_new(Vector **argv);
+Matrix *matrix_free(Matrix *matrix); 
+Tensor *tensor_new(size_t size);
+Tensor *tensor_free(Tensor *tensor); 
+Tensor *Procreate(Tensor *a, Tensor *b, Tensor *offspring);
+float Force(Gravity *gravity, Element *element1, Element *element2); 
+Entity *new_entity(Color color, float mass, float diameter, float weight);
+Gravity *new_gravity(Entity *entity, float force);
+Environment *new_environment(uint8_t width, uint8_t height);
+Element *interact_with_environment(Environment *env, Entity *entity);
+Element *create_canvas(Environment *env, Entity *entity);
+Element *create_entity(Environment *env, Entity *entity);
+Element *procreate(Element *a, Element *b); 
+Element *new_element(Canvas *canvas, Entity *entity);
+Element *new_attribute(Element *element, char *key, void *value);
+Element *new_property(Element *element, char *key, void *value);
 
 #endif
 

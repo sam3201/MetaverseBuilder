@@ -42,6 +42,9 @@ typedef struct {
 typedef enum {
     PLAYER = 0,
     ENEMY = 1,
+    TENSOR = -1,
+    MATRIX = -2,
+    VECTOR = -3,
     BUTTON = 2,
     TEXT = 3,
 } Type;
@@ -52,6 +55,7 @@ typedef struct {
     int8_t isAlive;
     Cell cell;
     Buffer buff;
+    Color color;
 } Entity;
 
 typedef struct {
@@ -96,5 +100,5 @@ void initializeEntityThreads(Canvas *canvas, uint8_t frameRate);
 extern int pipe_fd[2];
 extern volatile sig_atomic_t frameFlag;
 
-#endif 
+#endif
 
