@@ -1,9 +1,8 @@
 # MetaverseBuilder
 sim
 
-commands to run (game) 
-sh build.sh 
-game 
+commands to run (sim/game used to work, now its just broken) 
+sh build.sh
 
 
 
