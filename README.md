@@ -2,7 +2,7 @@
 sim
 
 commands to run sh build.sh
-follow instructions. Some of you are truly dumb.
+follow instructions. Some of US (USA) are truly dumb.
 
 
 
