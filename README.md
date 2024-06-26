@@ -17,4 +17,5 @@ steps to run
 1) open VERSION MANAGER
 2) open latest version
 3) sh build.sh
-4) follow instructions. Some of US ̨*(USA*)(WORLD) are truly dumb.
+
+follow instructions. Some of US ̨*(USA*)(WORLD) are truly dumb.
