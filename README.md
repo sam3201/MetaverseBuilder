@@ -52,7 +52,7 @@ TYPE (SNAKE_HEAD: SELF) {
     SELF: ENTITY(SELF, CHAR{0}, POS{0, 0})
 }
 
-	# Initial compile returns a list named after the TYPE or SELF 
+	// Initial compile returns a list named after the TYPE or SELF 
 TYPE (ROBOT: SELF) {
 	CONSTRUCT(SELF, CHAR: char, POS: pos) { //char(s) and pos(s) are required
         SELF: ENTITY(SELF, char, pos) 
@@ -65,7 +65,7 @@ TYPE (ROBOT: SELF) {
         allowed_spawns(SELF: SELF)
             POS{0, 0}
     
-    # Initial compile returns a list aggregating the PROPS values 
+    // Initial compile returns a list aggregating the PROPS values 
 
 	ATTR:
 		new_part(SELF, NUM: len, CHAR: char, POS: pos) {
@@ -74,11 +74,11 @@ TYPE (ROBOT: SELF) {
                 SELF[i]: ENTITY(NONALIVE, char, pos) 
         }
     }
-        # Initial compile returns a list of the ATTR methods 
+        // Initial compile returns a list of the ATTR methods 
 
 
 	destruct(SELF: SELF) {
-        # will call entity_free() 
+        // will call entity_free() 
 
     }
 }
