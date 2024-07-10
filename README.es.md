@@ -27,7 +27,7 @@ TYPE (SNAKE_HEAD: SELF) {
     SELF: ENTITY(SELF, CHAR{0}, POS{0, 0})
 }
 
-#Initial compile returns a list named after the TYPE or SELF 
+	#Initial compile returns a list named after the TYPE or SELF 
 TYPE (ROBOT: SELF) {
 	CONSTRUCT(SELF, CHAR: char, POS: pos) { //char(s) and pos(s) are required
         SELF: ENTITY(SELF, char, pos) 
