@@ -84,4 +84,7 @@ TYPE (ROBOT: SELF) {
 }
 }
 
+## FREAKING NEURAL NETWORKS!
+	Use Case Pending
+	Listed in little test Game in Google Doc
 
