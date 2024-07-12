@@ -6,14 +6,18 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <errno.h>
 #include "server.h"
+#include "Concurrency/thread_pool.h"
 
 #define MAX_BUFFER 1024
 #define MAX_CLIENTS 10
 
+ThreadPool *pool;
+
 Server_t *init_server(char *host, char *port) {
     Server_t *server = malloc(sizeof(Server_t));
-    server->socket = socket(AF_INET, SOCK_DGRAM, 0);
+    server->socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server->socket < 0) {
         perror("Socket creation failed");
         free(server);
@@ -24,14 +28,27 @@ Server_t *init_server(char *host, char *port) {
     server->clientCount = 0;
     server->id = 1;
     server->clients = malloc(sizeof(Client_t) * MAX_CLIENTS);
+
+    pool = threadPoolCreate(4, 10); 
+
     return server;
+}
+
+Entity *create_player(Server_t *server, Color color) {
+    Entity *player = malloc(sizeof(Entity));
+    player->type = (TYPE){"PLAYER"};
+    player->cell.pos.x = rand() % server->canvas->numCols; 
+    player->cell.pos.y = rand() % server->canvas->numRows; 
+    player->color = color;
+    return player;
 }
 
 Client_t *init_client(Server_t *server, int socket, struct sockaddr_in *client_addr) {
     Client_t *client = &server->clients[server->clientCount];
+    client->player = create_player(server, (Color){rand() % 256, rand() % 256, rand() % 256});
     client->socket = socket;
     client->server = server;
-    client->addr = *client_addr;
+    client->addr = client_addr;
     client->id = server->clientCount + 1;
     server->clientCount++;
     return client;
@@ -55,36 +72,30 @@ void *handle_client(void *arg) {
         buffer[bytesRead] = '\0';
         printf("Client %d: %s\n", client->id, buffer);
 
-        if (strcmp(buffer, "quit") == 0) {
+        if (strcmp(buffer, "q") == 0) {
             close(client->socket);
             client->socket = -1;
             return NULL;
         }
 
-        if (client->id == 1) {
-            if (strcmp(buffer, "stop") == 0) {
-                stop_server(client->server);
-                break;
-            }
+        if (client->id == 1 && strcmp(buffer, "stop") == 0) {
+            stop_server(client->server);
+            break;
+        }
 
-            unsigned int kick_id;
-            if (sscanf(buffer, "kick %d", &kick_id) == 1) {
-                for (unsigned int i = 0; i < MAX_CLIENTS; i++) {
-                    if (client->server->clients[i].id == kick_id) {
-                        close(client->server->clients[i].socket);
-                        client->server->clients[i].socket = -1;
-                        printf("Client %d kicked.\n", kick_id);
-                        if (kick_id == client->id) {
-                            stop_server(client->server);
-                            return NULL;
-                        }
-                        break;
-                    }
-                }
+        if (client->player) {
+            if (strcmp(buffer, "w") == 0) {
+                client->player->cell.pos.y--;
+            } else if (strcmp(buffer, "s") == 0) {
+                client->player->cell.pos.y++;
+            } else if (strcmp(buffer, "a") == 0) {
+                client->player->cell.pos.x--;
+            } else if (strcmp(buffer, "d") == 0) {
+                client->player->cell.pos.x++;
             }
         }
 
-        send_message(client, buffer);
+        sendCanvasToClients(client->server); 
     }
 
     printf("Client %d disconnected.\n", client->id);
@@ -96,11 +107,6 @@ void *handle_client(void *arg) {
 void start_server(Server_t *server) {
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_len = sizeof(client_addr);
-
-    if ((server->socket = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        perror("Socket creation failed");
-        exit(1);
-    }
 
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(atoi(server->port));
@@ -163,6 +169,71 @@ void stop_server(Server_t *server) {
     printf("Server stopped\n");
 }
 
+int8_t serverGameLoop(Canvas *canvas, uint8_t frameRate) {
+    signal(SIGINT, handleSignal);
+    srand((unsigned)time(NULL));
+
+    const unsigned int entityCount = 1;
+    for (int i = 0; i < entityCount; i++) {
+        Entity *enemy = createEntity((TYPE){"ENEMY"}, 'X', (rand() % (canvas->numCols - 2)) + 1, (rand() % (canvas->numRows - 2)) + 1, 3, (Color){255, 255, 255}, moveEnemy);
+        if (enemy) {
+            addEntity(canvas, enemy);
+        } else {
+            fprintf(stderr, "Failed to create enemy entity\n");
+        }
+    }
+
+    Entity *p = createEntity((TYPE){"P"}, 'O', 5, 5, 1, (Color){255, 0, 0}, NULL); 
+    addEntity(canvas, p);
+
+    char *title = "Game - WASD to move, Q to quit";
+    Color titleColor = {0, 255, 255};
+    size_t titleLength = strlen(title);
+    Entity **titleText = createText(title, 1, 1, titleColor, &titleLength);
+    if (titleText) {
+        for (size_t i = 0; i < titleLength; i++) {
+            addEntity(canvas, titleText[i]);
+        }
+        free(titleText);
+    } else {
+        fprintf(stderr, "Failed to create title text\n");
+    }
+
+    setRawMode(1);
+    setupFrameTimer(frameRate);
+    initializeEntityThreads((TYPE){"ENEMY"}, canvas, frameRate);
+
+    while (1) {
+        if (frameFlag) {
+            frameFlag = 0;
+            if (kbhit()) {
+                char c = getchar();
+                if (c == 'q') {
+                    break;
+                }
+        
+                movePlayer(canvas, p, c); 
+            }
+
+            drawEntities(canvas);
+            drawBorder(canvas);
+            printf("\033[H");
+            printCanvas(canvas);
+        }
+    }
+
+    setRawMode(0);
+
+    for (size_t i = 0; i < canvas->state.entityCount; i++) {
+        canvas->state.entities[i]->isAlive = 0;
+        pthread_join(canvas->state.entities[i]->thread, NULL);
+    }
+
+    freeCanvas(canvas);
+
+    return 0;
+}
+
 void startGameLoop(Server_t *server, uint8_t rows, uint8_t cols) {
     server->canvas = initCanvas(rows, cols, ' ');
     pthread_create(&server->gameLoopThread, NULL, gameLoopThread, server);
@@ -171,7 +242,7 @@ void startGameLoop(Server_t *server, uint8_t rows, uint8_t cols) {
 void *gameLoopThread(void *arg) {
     Server_t *server = (Server_t *)arg;
     while (1) {
-        if (GameLoop(server->canvas, 60) != 0) {
+        if (serverGameLoop(server->canvas, 60) != 0) {
             break;
         }
 
@@ -182,10 +253,10 @@ void *gameLoopThread(void *arg) {
 }
 
 void sendCellUpdates(Server_t *server, CellUpdate *updates, size_t updateCount) {
-    char buffer[MAX_BUFFER];
+    char buffer[sizeof(server->canvas->state.cells)/sizeof(server->canvas->state.cells[0])]; 
     int bufferSize = 0;
 
-    for (size_t i = 0; i < updateCount; i++) {
+    for (size_t i = 0; i >= updateCount; i++) {
         int updateSize = snprintf(buffer + bufferSize, sizeof(buffer) - bufferSize,
                                   "%d,%d,%c,%d,%d,%d;",
                                   updates[i].x, updates[i].y, updates[i].c,
@@ -263,7 +334,7 @@ int main(int argc, char **argv) {
     }
 
     if (strcmp(argv[3], "yes") == 0) {
-        startGameLoop(server, 66, 150);
+        startGameLoop(server, 50, 90);
     }
 
     start_server(server);

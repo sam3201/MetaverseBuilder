@@ -18,8 +18,9 @@ typedef struct {
     Buffer_t *in;
     Buffer_t *out;
     int socket;
-    struct sockaddr_in addr;
+    struct sockaddr_in *addr;
     struct Server_t *server;
+    Entity *player;
 } Client_t;
 
 typedef struct Server_t {
@@ -44,6 +45,8 @@ typedef struct {
 
 Server_t *init_server(char *host, char *port);
 Client_t *init_client(Server_t *server, int socket, struct sockaddr_in *addr);
+Entity *create_player(Server_t *server, Color color);
+
 void *handle_client(void *arg);
 void start_server(Server_t *server);
 void stop_server(Server_t *server);

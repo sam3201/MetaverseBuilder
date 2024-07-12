@@ -36,10 +36,10 @@ case "$file" in
     fi
     ;;
   "server")
-    gcc utils/server.c -o server utils/environment.c -pthread -lm 
+    gcc utils/server.c -o server utils/environment.c utils/Concurrency/thread_pool.c -pthread -lm 
     if [ $? -eq 0 ]; then
       read -p "Start game loop? (yes/no): " start_game
-      ./server 127.0.0.1 42069 $start_game
+      lldb ./server 127.0.0.1 42069 $start_game
       rm server
     else
       echo "Compilation failed for server."

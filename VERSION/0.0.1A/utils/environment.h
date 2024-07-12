@@ -47,7 +47,7 @@ typedef struct Entity Entity;
 
 typedef struct Entity {
     TYPE type;
-    uint8_t health;
+    unsigned int health;
     int8_t isAlive;
     Cell cell;
     Color color;
