@@ -13,6 +13,12 @@
 
 Server_t *init_server(char *host, char *port) {
     Server_t *server = malloc(sizeof(Server_t));
+    server->socket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (server->socket < 0) {
+        perror("Socket creation failed");
+        free(server);
+        return NULL;
+    }
     server->host = host;
     server->port = port;
     server->clientCount = 0;
@@ -21,11 +27,13 @@ Server_t *init_server(char *host, char *port) {
     return server;
 }
 
-Client_t *init_client(Server_t *server, int socket) {
+Client_t *init_client(Server_t *server, int socket, struct sockaddr_in *client_addr) {
     Client_t *client = &server->clients[server->clientCount];
     client->socket = socket;
     client->server = server;
+    client->addr = *client_addr;
     client->id = server->clientCount + 1;
+    server->clientCount++;
     return client;
 }
 
@@ -50,33 +58,30 @@ void *handle_client(void *arg) {
         if (strcmp(buffer, "quit") == 0) {
             close(client->socket);
             client->socket = -1;
-            free(client);
             return NULL;
         }
-      
+
         if (client->id == 1) {
-          if (strcmp(buffer, "stop") == 0) {
-              stop_server(client->server);
-              break; 
-            }
-           
-           unsigned int kick_id; 
-           if (sscanf(buffer, "kick %d", &kick_id) == 1) {
-              for (unsigned int i = 0; i < MAX_CLIENTS; i++) {
-                if (client->server->clients[i].id == kick_id) {
-                  close(client->server->clients[i].socket);
-                  client->server->clients[i].socket = -1;
-                  free(&client->server->clients[i]);
-                  printf("Client %d kicked.\n", client->id);
-                  if (kick_id == client->id) {
-                    stop_server(client->server); 
-                    return NULL;
-                  }
-                  break;
-              }
+            if (strcmp(buffer, "stop") == 0) {
+                stop_server(client->server);
+                break;
             }
 
-          } 
+            unsigned int kick_id;
+            if (sscanf(buffer, "kick %d", &kick_id) == 1) {
+                for (unsigned int i = 0; i < MAX_CLIENTS; i++) {
+                    if (client->server->clients[i].id == kick_id) {
+                        close(client->server->clients[i].socket);
+                        client->server->clients[i].socket = -1;
+                        printf("Client %d kicked.\n", kick_id);
+                        if (kick_id == client->id) {
+                            stop_server(client->server);
+                            return NULL;
+                        }
+                        break;
+                    }
+                }
+            }
         }
 
         send_message(client, buffer);
@@ -84,7 +89,7 @@ void *handle_client(void *arg) {
 
     printf("Client %d disconnected.\n", client->id);
     close(client->socket);
-    client->socket = -1; 
+    client->socket = -1;
     return NULL;
 }
 
@@ -128,8 +133,7 @@ void start_server(Server_t *server) {
             continue;
         }
 
-        Client_t *client = init_client(server, client_socket);
-        server->clientCount++;
+        Client_t *client = init_client(server, client_socket, &client_addr);
 
         if (pthread_create(&client->thread, NULL, handle_client, (void *)client) != 0) {
             perror("Failed to create client thread");
@@ -140,7 +144,7 @@ void start_server(Server_t *server) {
 
         pthread_detach(client->thread);
     }
-  stop_server(server);
+    stop_server(server);
 }
 
 void stop_server(Server_t *server) {
@@ -156,13 +160,113 @@ void stop_server(Server_t *server) {
     free(server->clients);
     free(server);
 
-  printf("Server stopped\n");
+    printf("Server stopped\n");
+}
+
+void startGameLoop(Server_t *server, uint8_t rows, uint8_t cols) {
+    server->canvas = initCanvas(rows, cols, ' ');
+    pthread_create(&server->gameLoopThread, NULL, gameLoopThread, server);
+}
+
+void *gameLoopThread(void *arg) {
+    Server_t *server = (Server_t *)arg;
+    while (1) {
+        if (GameLoop(server->canvas, 60) != 0) {
+            break;
+        }
+
+        sendCanvasToClients(server);
+    }
+
+    return NULL;
+}
+
+void sendCellUpdates(Server_t *server, CellUpdate *updates, size_t updateCount) {
+    char buffer[MAX_BUFFER];
+    int bufferSize = 0;
+
+    for (size_t i = 0; i < updateCount; i++) {
+        int updateSize = snprintf(buffer + bufferSize, sizeof(buffer) - bufferSize,
+                                  "%d,%d,%c,%d,%d,%d;",
+                                  updates[i].x, updates[i].y, updates[i].c,
+                                  updates[i].color.r, updates[i].color.g, updates[i].color.b);
+
+        if (bufferSize + updateSize >= sizeof(buffer)) {
+            for (int j = 0; j < server->clientCount; j++) {
+                sendto(server->socket, buffer, bufferSize, 0,
+                       (struct sockaddr *)&server->clients[j].addr, sizeof(struct sockaddr_in));
+            }
+            bufferSize = 0;
+        }
+
+        bufferSize += updateSize;
+    }
+
+    if (bufferSize > 0) {
+        for (int j = 0; j < server->clientCount; j++) {
+            sendto(server->socket, buffer, bufferSize, 0,
+                   (struct sockaddr *)&server->clients[j].addr, sizeof(struct sockaddr_in));
+        }
+    }
+}
+
+void sendCanvasToClients(Server_t *server) {
+    static char **prevCells = NULL;
+    static Color **prevColors = NULL;
+
+    if (prevCells == NULL) {
+        prevCells = malloc(server->canvas->numRows * sizeof(char *));
+        prevColors = malloc(server->canvas->numRows * sizeof(Color *));
+        for (int i = 0; i < server->canvas->numRows; i++) {
+            prevCells[i] = malloc(server->canvas->numCols * sizeof(char));
+            prevColors[i] = malloc(server->canvas->numCols * sizeof(Color));
+            memset(prevCells[i], 0, server->canvas->numCols * sizeof(char));
+            memset(prevColors[i], 0, server->canvas->numCols * sizeof(Color));
+        }
+    }
+
+    CellUpdate *updates = malloc(server->canvas->numRows * server->canvas->numCols * sizeof(CellUpdate));
+    size_t updateCount = 0;
+
+    for (int i = 0; i < server->canvas->numRows; i++) {
+        for (int j = 0; j < server->canvas->numCols; j++) {
+            if (server->canvas->state.cells[i][j] != prevCells[i][j] ||
+                memcmp(&server->canvas->state.colors[i][j], &prevColors[i][j], sizeof(Color)) != 0) {
+                updates[updateCount].x = j;
+                updates[updateCount].y = i;
+                updates[updateCount].c = server->canvas->state.cells[i][j];
+                updates[updateCount].color = server->canvas->state.colors[i][j];
+                updateCount++;
+
+                prevCells[i][j] = server->canvas->state.cells[i][j];
+                prevColors[i][j] = server->canvas->state.colors[i][j];
+            }
+        }
+    }
+
+    if (updateCount > 0) {
+        sendCellUpdates(server, updates, updateCount);
+    }
+
+    free(updates);
 }
 
 int main(int argc, char **argv) {
-  Server_t *server = init_server(argv[1], argv[2]);
-  start_server(server);
-  return 0;
-}
+    if (argc != 4) {
+        fprintf(stderr, "Usage: %s <host> <port> <start_game>\n", argv[0]);
+        return 1;
+    }
 
+    Server_t *server = init_server(argv[1], argv[2]);
+    if (server == NULL) {
+        return 1;
+    }
+
+    if (strcmp(argv[3], "yes") == 0) {
+        startGameLoop(server, 66, 150);
+    }
+
+    start_server(server);
+    return 0;
+}
 

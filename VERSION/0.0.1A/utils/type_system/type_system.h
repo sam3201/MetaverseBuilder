@@ -7,13 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct TYPE TYPE;
-void add_type_to_file(const char *name);
-int type_exists(const char *name);
-void initialize_all_entity_types(); 
-void add_type(const char *name);
-void remove_type(const char *name);
-void print_types();
+typedef struct {
+    char *name;
+    unsigned int id;
+} TYPE;
 
 #define TYPE(nm) \
     __extension__({ \
@@ -25,6 +22,12 @@ void print_types();
         } \
     })
 
+TYPE *initialize_all_entity_types();
+void add_type_to_file(char *name);
+int type_exists(char *name);
+void add_type(char *name);
+void remove_type(char *name);
+void print_types();
 
 #endif 
 

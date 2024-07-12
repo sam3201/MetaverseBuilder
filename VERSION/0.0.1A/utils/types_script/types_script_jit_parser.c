@@ -8,7 +8,12 @@ typedef struct {
 } Parser;
 
 void nextToken(Parser *parser) {
-    parser->currToken = parser->lexer.tokens[parser->lexer.pos++];
+    if (parser->lexer.pos < parser->lexer.size) {
+        parser->currToken = parser->lexer.tokens[parser->lexer.pos++];
+        printf("Next token: %s (%s)\n", parser->currToken.name, token_names[parser->currToken.type]);
+    } else {
+        parser->currToken = create_token(EOF_TOKEN, "EOF");
+    }
 }
 
 void expectToken(Parser *parser, TokenType type) {
@@ -19,69 +24,83 @@ void expectToken(Parser *parser, TokenType type) {
 }
 
 void generateEntityCode(Parser *parser, FILE *outFile) {
-    fprintf(outFile, "Entity *createEntity(");
-    
-    expectToken(parser, TYPE_TOKEN);
-    fprintf(outFile, "TYPE type, ");
-    nextToken(parser);
-    
-    expectToken(parser, NAME_TOKEN);
-    fprintf(outFile, "char c, ");
-    nextToken(parser);
-    
-    expectToken(parser, POS_TOKEN);
-    fprintf(outFile, "uint8_t x, uint8_t y, ");
-    nextToken(parser);
-    
-    expectToken(parser, NUM_TOKEN);
-    fprintf(outFile, "uint8_t health, ");
-    nextToken(parser);
-    
-    expectToken(parser, COLOR_TOKEN);
-    fprintf(outFile, "Color color, ");
-    nextToken(parser);
-    
-    expectToken(parser, TOKEN_FN);
-    fprintf(outFile, "void (*moveFunc)(Canvas *canvas, Entity *entity)) {\n");
-    nextToken(parser);
-    
-    fprintf(outFile, "    Entity *entity = (Entity *)malloc(sizeof(Entity));\n");
-    fprintf(outFile, "    entity->type = type;\n");
-    fprintf(outFile, "    entity->cell.c = c;\n");
-    fprintf(outFile, "    entity->cell.pos.x = x;\n");
-    fprintf(outFile, "    entity->cell.pos.y = y;\n");
-    fprintf(outFile, "    entity->health = health;\n");
-    fprintf(outFile, "    entity->isAlive = 1;\n");
-    fprintf(outFile, "    entity->color = color;\n");
-    fprintf(outFile, "    entity->moveFunc = moveFunc;\n");
-    fprintf(outFile, "    return entity;\n");
-    fprintf(outFile, "}\n");
-}
+    printf("Generating entity code...\n");
 
-void parseEntities(Parser *parser, FILE *outFile) {
-    while (parser->lexer.pos < parser->lexer.pos) {
-        nextToken(parser);
-        if (parser->currToken.type == ENTITY_TOKEN) {
-            generateEntityCode(parser, outFile);
-        }
+    fputs("Entity *createEntity(TYPE type, char c, uint8_t x, uint8_t y, uint8_t health, Color color, void (*moveFunc)(Canvas *canvas, Entity *entity)) {\n", outFile);
+    fputs("    Entity *entity = (Entity *)malloc(sizeof(Entity));\n", outFile);
+    fputs("    entity->type = type;\n", outFile);
+    fputs("    entity->cell.c = c;\n", outFile);
+    fputs("    entity->cell.pos.x = x;\n", outFile);
+    fputs("    entity->cell.pos.y = y;\n", outFile);
+    fputs("    entity->health = health;\n", outFile);
+    fputs("    entity->isAlive = 1;\n", outFile);
+    fputs("    entity->color = color;\n", outFile);
+    fputs("    entity->moveFunc = moveFunc;\n", outFile);
+    fputs("    return entity;\n", outFile);
+    fputs("}\n", outFile);
+
+    if (fflush(outFile) != 0) {
+        perror("Error flushing file buffer");
+        return;
     }
+
+    printf("Entity code generated successfully.\n");
 }
 
 void parseScript(Lexer lexer, const char *outputFileName) {
-    Parser parser = { lexer };
-    FILE *outFile = fopen(outputFileName, "w");
+    Parser parser = { lexer, lexer.tokens[0] };
+    FILE *outFile = fopen(outputFileName, "a");
     if (!outFile) {
         perror("Failed to open output file");
         exit(1);
     }
 
-    parseEntities(&parser, outFile);
-    fclose(outFile);
+    printf("Starting to parse entities...\n");
+    while (parser.currToken.type != EOF_TOKEN) {
+        printf("Processing token: %s (%s)\n", parser.currToken.name, token_names[parser.currToken.type]);
+
+        switch(parser.currToken.type) {
+            case ENTITY_TOKEN:
+                printf("Entity token found. Generating entity code.\n");
+                generateEntityCode(&parser, outFile);
+                break;
+            case TYPE_TOKEN:
+                printf("Type token found. Expecting entity definition.\n");
+                nextToken(&parser);
+                if (parser.currToken.type == OPEN_CURLY_TOKEN) {
+                    printf("Found open curly brace. Parsing entity definition.\n");
+                    while (parser.currToken.type != CLOSE_CURLY_TOKEN && parser.currToken.type != EOF_TOKEN) {
+                        nextToken(&parser);
+                        printf("Entity definition token: %s (%s)\n", parser.currToken.name, token_names[parser.currToken.type]);
+                    }
+                    if (parser.currToken.type == CLOSE_CURLY_TOKEN) {
+                        printf("Found closing curly brace. Entity definition complete.\n");
+                    } else {
+                        printf("Warning: Reached EOF before finding closing curly brace.\n");
+                    }
+                } else {
+                    printf("Warning: Expected open curly brace after TYPE, found %s instead.\n", token_names[parser.currToken.type]);
+                }
+                break;
+            default:
+                printf("Unhandled token type: %s\n", token_names[parser.currToken.type]);
+                break;
+        }
+
+        nextToken(&parser);
+    }
+    printf("Finished parsing entities.\n");
+
+    if (fclose(outFile) != 0) {
+        perror("Error closing output file");
+    }
+
+    printf("Finished writing to output file.\n");
 }
 
 int main(int argc, char **argv) {
     if (argc != 3) {
-        fprintf(stderr, "Usage: %s <input_script> <output_file>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <input_script.deff> <output_file>\n", argv[0]);
         return 1;
     }
 
@@ -91,12 +110,27 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    printf("Input file opened successfully.\n");
+
     Lexer lexer = lexer_new(inputFile);
+    printf("Lexer created.\n");
+
     lexer = lex(lexer);
+    printf("Lexing completed.\n");
+
     fclose(inputFile);
 
+    printf("Tokens after lexing:\n");
+    for (unsigned int i = 0; i < lexer.size; i++) {
+        printf("Token %d: %s (%s)\n", i, lexer.tokens[i].name, token_names[lexer.tokens[i].type]);
+    }
+
+    printf("Starting parsing...\n");
     parseScript(lexer, argv[2]);
+    printf("Parsing completed.\n");
+
     lexer_free(lexer);
+    printf("Lexer freed.\n");
 
     return 0;
 }

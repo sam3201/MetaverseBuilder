@@ -347,7 +347,7 @@ void element_move(Canvas *canvas, Entity *entity) {
 Element *element_new(Canvas *canvas, char c, uint8_t x, uint8_t y, Color color, void (*moveFunc)(Canvas *canvas, Entity *entity)) {
   Element *element = (Element*)malloc(sizeof(Element));
 
-  element->bounding = createEntity(ELEMENT, c, x, y, 1, color, moveFunc); 
+  element->bounding = createEntity((TYPE){"ELEMENT"}, c, x, y, 1, color, moveFunc); 
   element->mass = element->bounding->cell.color.r + element->bounding->cell.color.g + element->bounding->cell.color.b;
   element->diameter = 1;
   element->weight = element->mass; 

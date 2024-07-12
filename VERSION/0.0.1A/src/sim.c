@@ -35,7 +35,7 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
 
     setRawMode(1);
     setupFrameTimer(frameRate);
-    initializeEntityThreads(ELEMENT, canvas, frameRate);
+    initializeEntityThreads((TYPE){"ELEMENT"}, canvas, frameRate);
 
     env->start = clock();
 

@@ -124,9 +124,10 @@ void resetColor() {
 }
 
 void printCanvas(Canvas *canvas) {
-  system("clear");
-  for (uint8_t i = 0; i < canvas->numRows; i++) {
-    for (uint8_t j = 0; j < canvas->numCols; j++) {
+  printf("\033[2J");
+  uint8_t i, j;
+  for (i = 0; i < canvas->numRows; i++) {
+    for (j = 0; j < canvas->numCols; j++) {
       setColor(canvas->state.colors[i][j]);
       printf("%c", canvas->state.cells[i][j]);
       resetColor();
@@ -156,14 +157,14 @@ Entity **createText(char *text, uint8_t startX, uint8_t startY, Color color, siz
   *entityCount = len;
 
   for (size_t i = 0; i < len; i++) {
-    textEntities[i] = createEntity(TEXT, text[i], startX + i, startY, 1, color, NULL);
+    textEntities[i] = createEntity((TYPE){"TEXT"}, text[i], startX + i, startY, 1, color, NULL);
   }
 
   return textEntities;
 }
 
 Entity *createButton(char c, uint8_t x, uint8_t y) {
-  return createEntity(BUTTON, c, x, y, 1, (Color){0, 0, 0}, NULL);
+  return createEntity((TYPE){"BUTTON"}, c, x, y, 1, (Color){0, 0, 0}, NULL);
 }
 
 void deleteEntity(Entity *entity) {
@@ -306,7 +307,7 @@ void entityThreadFunc(EntityThreadArgs *args) {
 
 void initializeEntityThreads(TYPE type, Canvas *canvas, uint8_t frameRate) { 
   for (size_t i = 0; i < canvas->state.entityCount; i++) {
-    if (canvas->state.entities[i]->type == type) {
+    if (canvas->state.entities[i]->type.name == type.name) {
       EntityThreadArgs *args = (EntityThreadArgs *)malloc(sizeof(EntityThreadArgs));
       args->canvas = canvas;
       args->entity = canvas->state.entities[i];
@@ -318,12 +319,6 @@ void initializeEntityThreads(TYPE type, Canvas *canvas, uint8_t frameRate) {
 }
 
 int8_t GameLoop(Canvas *canvas, uint8_t frameRate) {
-    struct TypeInfo *types = initialize_all_entity_types();
-    if (!types) {
-        fprintf(stderr, "Failed to initialize entity types\n");
-        return -1;
-    }
-
     setupFrameTimer(frameRate);
 
     while (1) {
@@ -354,5 +349,3 @@ int8_t GameLoop(Canvas *canvas, uint8_t frameRate) {
 
     return 0; 
 }
-
-

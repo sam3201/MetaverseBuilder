@@ -83,6 +83,7 @@ typedef struct {
 
 typedef struct {
     unsigned int pos; 
+    unsigned int size;
     char *red;
     Token *tokens;
 } Lexer;

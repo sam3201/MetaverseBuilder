@@ -6,6 +6,7 @@
 Lexer lexer_new(FILE *f) {
     Lexer *lexer = malloc(sizeof(Lexer));
     lexer->pos = 0;
+    lexer->size = 0; 
 
     fseek(f, 0, SEEK_END);
     size_t file_len = ftell(f);
@@ -13,7 +14,7 @@ Lexer lexer_new(FILE *f) {
 
     lexer->red = (char *)malloc(file_len + 1);
     size_t bytes_read = fread(lexer->red, sizeof(char), file_len, f);
-    lexer->red[file_len] = '\0';  // Fix null termination
+    lexer->red[file_len] = '\0'; 
     lexer->tokens = (Token *)malloc((file_len + 1) * sizeof(Token));
 
     return *lexer;
@@ -21,6 +22,9 @@ Lexer lexer_new(FILE *f) {
 
 void lexer_free(Lexer lexer) {
     free(lexer.red);
+    for (unsigned int i = 0; i < lexer.size; i++) {
+        free(lexer.tokens[i].name);
+    }
     free(lexer.tokens);
 }
 
@@ -50,18 +54,14 @@ Lexer lex(Lexer lexer) {
 
             if (strcmp(name, "TYPE") == 0) {
                 lexer.tokens[token_pos++] = create_token(TYPE_TOKEN, name);
-            } else if (strcmp(name, "CONSTRUCT") == 0) {
-                lexer.tokens[token_pos++] = create_token(TOKEN_CONSTRUCT, name);
             } else if (strcmp(name, "SELF") == 0) {
                 lexer.tokens[token_pos++] = create_token(TOKEN_SELF, name);
-            } else if (strcmp(name, "PROP") == 0) {
-                lexer.tokens[token_pos++] = create_token(TOKEN_PROP, name);
-            } else if (strcmp(name, "ATTR") == 0) {
-                lexer.tokens[token_pos++] = create_token(TOKEN_ATTR, name);
             } else if (strcmp(name, "COLOR") == 0) {
                 lexer.tokens[token_pos++] = create_token(COLOR_TOKEN, name);
             } else if (strcmp(name, "POS") == 0) {
                 lexer.tokens[token_pos++] = create_token(POS_TOKEN, name);
+            } else if (strcmp(name, "ENTITY") == 0) {
+                lexer.tokens[token_pos++] = create_token(ENTITY_TOKEN, name);
             } else {
                 lexer.tokens[token_pos++] = create_token(NAME_TOKEN, name);
             }
@@ -87,68 +87,28 @@ Lexer lex(Lexer lexer) {
                 lexer.tokens[token_pos++] = create_token(COLON_TOKEN, ":");
                 lexer.pos++;
                 break;
+            case '(':
+                lexer.tokens[token_pos++] = create_token(OPEN_CURLY_TOKEN, "(");
+                lexer.pos++;
+                break;
+            case ')':
+                lexer.tokens[token_pos++] = create_token(CLOSE_CURLY_TOKEN, ")");
+                lexer.pos++;
+                break;
             case '=':
                 lexer.tokens[token_pos++] = create_token(EQUAL_TOKEN, "=");
                 lexer.pos++;
                 break;
-            case '+':
-                lexer.tokens[token_pos++] = create_token(PLUS_TOKEN, "+");
-                lexer.pos++;
-                break;
-            case '-':
-                lexer.tokens[token_pos++] = create_token(MINUS_TOKEN, "-");
-                lexer.pos++;
-                break;
-            case '*':
-                lexer.tokens[token_pos++] = create_token(MULT_TOKEN, "*");
-                lexer.pos++;
-                break;
-            case '/':
-                lexer.tokens[token_pos++] = create_token(DIV_TOKEN, "/");
-                lexer.pos++;
-                break;
-            case '%':
-                lexer.tokens[token_pos++] = create_token(MOD_TOKEN, "%");
-                lexer.pos++;
-                break;
-            case '.':
-                lexer.tokens[token_pos++] = create_token(DOT_TOKEN, ".");
-                lexer.pos++;
-                break;
-            case '"': {
-                lexer.pos++;
-                size_t start = lexer.pos;
-                while (lexer.red[lexer.pos] != '"' && lexer.red[lexer.pos] != '\0') {
-                    lexer.pos++;
-                }
-                size_t length = lexer.pos - start;
-                char *string = strndup(lexer.red + start, length);
-                lexer.tokens[token_pos++] = create_token(STRING_TOKEN, string);
-                free(string);
-                lexer.pos++;
-                break;
-            }
             default:
                 if (isdigit(lexer.red[lexer.pos])) {
                     size_t start = lexer.pos;
                     while (isdigit(lexer.red[lexer.pos])) {
                         lexer.pos++;
                     }
-                    if (lexer.red[lexer.pos] == '.') {
-                        lexer.pos++;
-                        while (isdigit(lexer.red[lexer.pos])) {
-                            lexer.pos++;
-                        }
-                        size_t length = lexer.pos - start;
-                        char *decimal = strndup(lexer.red + start, length);
-                        lexer.tokens[token_pos++] = create_token(DECIMAL_TOKEN, decimal);
-                        free(decimal);
-                    } else {
-                        size_t length = lexer.pos - start;
-                        char *number = strndup(lexer.red + start, length);
-                        lexer.tokens[token_pos++] = create_token(NUM_TOKEN, number);
-                        free(number);
-                    }
+                    size_t length = lexer.pos - start;
+                    char *number = strndup(lexer.red + start, length);
+                    lexer.tokens[token_pos++] = create_token(NUM_TOKEN, number);
+                    free(number);
                 } else {
                     lexer.tokens[token_pos++] = create_token(INVALID_TOKEN, "INVALID");
                     lexer.pos++;
@@ -158,6 +118,12 @@ Lexer lex(Lexer lexer) {
     }
 
     lexer.tokens[token_pos++] = create_token(EOF_TOKEN, "EOF");
+    lexer.size = token_pos; 
+
+    for (size_t i = 0; i < lexer.size; i++) {
+        printf("Token: %s (%s)\n", lexer.tokens[i].name, token_names[lexer.tokens[i].type]);
+    }
+
     return lexer;
 }
 

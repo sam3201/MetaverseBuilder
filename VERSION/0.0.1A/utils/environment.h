@@ -46,7 +46,7 @@ typedef struct Canvas Canvas;
 typedef struct Entity Entity;
 
 typedef struct Entity {
-    TYPE *type;
+    TYPE type;
     uint8_t health;
     int8_t isAlive;
     Cell cell;
@@ -102,6 +102,13 @@ void updateClock(Clock *clock);
 int8_t fixedUpdateReady(Clock *clock);
 
 Entity *createEntity(TYPE type, char c, uint8_t x, uint8_t y, uint8_t health, Color color, void (*moveFunc)(Canvas *canvas, Entity *entity));
+#define GENERATE_TYPE_MACROS(types) \
+    do { \
+        for (size_t i = 0; i < sizeof(types) / sizeof(TYPE); i++) { \
+            printf("#define %s (%s)\n", types[i].name, types[i].name); \
+        } \
+    } while(0);
+
 Entity **createText(char *text, uint8_t startX, uint8_t startY, Color color, size_t *entityCount);
 Entity *createButton(char c, uint8_t x, uint8_t y);
 void deleteEntity(Entity *entity);

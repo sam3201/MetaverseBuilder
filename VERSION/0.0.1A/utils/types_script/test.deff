@@ -1,0 +1,25 @@
+### 
+should be parsed as invalid/not needed tokens in the future
+
+r grgrewg
+rg 
+r
+ht
+ wg
+ tw 
+ gr
+ gw
+ rg
+ 3w
+ 4t 2
+ 34 t
+ 34
+### 
+
+#
+should be parsed correctly
+
+TYPE (SNAKE: SELF) {
+  SELF: ENTITY(CHAR: c, POS: pos)
+}
+

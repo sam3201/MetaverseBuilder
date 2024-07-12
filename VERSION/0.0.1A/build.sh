@@ -9,16 +9,16 @@ fi
 
 case "$file" in
   "game")
-    gcc src/game.c -g -o game utils/type_system/type_system.c utils/environment.c -lpthread
+    gcc src/game.c -o game utils/environment.c utils/type_system/type_system.c -lpthread
     if [ $? -eq 0 ]; then
-      lldb ./game
+      ./game
       rm game
     else
       echo "Compilation failed for game."
     fi
     ;;
   "sim")
-    gcc src/sim.c -o sim utils/environment.c utils/NN.c -lpthread -lm
+    gcc src/sim.c -o sim utils/environment.c utils/NN.c utils/type_system/type_system.c -lpthread -lm
     if [ $? -eq 0 ]; then
       ./sim
       rm sim
@@ -27,7 +27,7 @@ case "$file" in
     fi
     ;;
   "cite")
-    gcc src/cite.c -o cite utils/environment.c utils/NN.c utils/server.c -pthread -lm 
+    gcc src/cite.c -o cite utils/environment.c utils/type_system/type_system.c utils/NN.c utils/server.c -pthread -lm 
     if [ $? -eq 0 ]; then
       ./cite 127.0.0.1 42069 
       rm cite 
@@ -36,9 +36,10 @@ case "$file" in
     fi
     ;;
   "server")
-    gcc utils/server.c -o server -pthread -lm 
+    gcc utils/server.c -o server utils/environment.c -pthread -lm 
     if [ $? -eq 0 ]; then
-      ./server 127.0.0.1 42069 
+      read -p "Start game loop? (yes/no): " start_game
+      ./server 127.0.0.1 42069 $start_game
       rm server
     else
       echo "Compilation failed for server."
@@ -58,5 +59,4 @@ case "$file" in
     exit 1
     ;;
 esac
-
 
