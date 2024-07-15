@@ -6,6 +6,13 @@
 #include <time.h>
 #include <signal.h>
 #include <sys/time.h>
+#if defined(__linux__)
+#include <linux/input.h>
+#elif defined(__APPLE__)
+#include <ApplicationServices/ApplicationServices.h>
+#endif
+
+
 #include "type_system/type_system.h"
 
 typedef struct {
@@ -81,6 +88,7 @@ typedef struct {
   double deltaTime;
   double fixed_deltaTime;
   unsigned int frameCount;
+  uint8_t fps;
 } Clock;
 
 
@@ -94,12 +102,16 @@ Canvas *initCanvas(uint8_t numRows, uint8_t numCols, char empty);
 void drawBorder(Canvas *canvas);
 void setColor(Color color);
 void resetColor();
+void clearCanvas(Canvas *canvas);
+Canvas *resetCanvas(Canvas *canvas);
 
 void printCanvas(Canvas *canvas);
 
-void initClock(Clock *clock, double fixed_update_rate);
+Clock *createClock();
+void initClock(Clock *clock, double fixed_update_rate, uint8_t fps);
 void updateClock(Clock *clock);
 int8_t fixedUpdateReady(Clock *clock);
+void destroyClock(Clock *clock);
 
 Entity *createEntity(TYPE type, char c, uint8_t x, uint8_t y, uint8_t health, Color color, void (*moveFunc)(Canvas *canvas, Entity *entity));
 #define GENERATE_TYPE_MACROS(types) \
@@ -125,7 +137,9 @@ void entityThreadFunc(EntityThreadArgs* args);
 void initializeEntityThreads(TYPE type, Canvas *canvas, uint8_t frameRate);
 void freeCanvas(Canvas *canvas);
 
-int8_t GameLoop(Canvas *canvas, uint8_t frameRate);
+int8_t GameLoop(int8_t addPlayer, uint8_t numRows, uint8_t numCols, double fixed_update_rate, uint8_t frameRate); 
+void handleMouseEvents(Canvas *canvas);
+Pos getMousePos();
 
 extern int pipe_fd[2];
 extern volatile sig_atomic_t frameFlag;

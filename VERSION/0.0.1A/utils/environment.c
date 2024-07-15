@@ -8,6 +8,11 @@
 #include <pthread.h>
 #include <sys/time.h>
 #include <signal.h>
+#if defined(__linux__)
+#includwe <linux/input.h>
+#elif defined(__APPLE__) 
+#include <ApplicationServices/ApplicationServices.h>
+#endif
 
 int pipe_fd[2];
 
@@ -74,12 +79,24 @@ void freeCanvas(Canvas *canvas) {
   free(canvas);
 }
 
-void initClock(Clock *clock, double fixed_update_rate) {
+void initClock(Clock *clock, double fixed_update_rate, uint8_t fps) {
   clock_gettime(CLOCK_MONOTONIC, &clock->lastUpdate);
   clock->deltaTime = 0.0f;
-  clock->fixed_deltaTime = 0.0f;
+  clock->fixed_deltaTime = 1.0f / fixed_update_rate;
   clock->frameCount = 1.0f / fixed_update_rate;
+  clock->fps = fps;
+}
 
+Clock *createClock() {
+  Clock *clock = (Clock *)malloc(sizeof(Clock));
+  if (!clock) return NULL;
+
+  clock->fps = 0;
+  return clock;
+}
+
+void destroyClock(Clock *clock) {
+  free(clock);
 }
 
 void updateClock(Clock *clock) {
@@ -93,8 +110,8 @@ void updateClock(Clock *clock) {
 }
 
 int8_t fixedUpdateReady(Clock *clock) {
-    static double accumlator = 0.0f;
-    accumlator += clock->deltaTime;
+  static double accumlator = 0.0f;
+  accumlator += clock->deltaTime;
 
   if (accumlator >= clock->fixed_deltaTime) {
     accumlator -= clock->fixed_deltaTime;
@@ -103,7 +120,6 @@ int8_t fixedUpdateReady(Clock *clock) {
 
   return 0;
 }
-
 void drawBorder(Canvas *canvas) {
   for (int i = 0; i < canvas->numCols; i++) {
     canvas->state.cells[0][i] = '-';
@@ -134,6 +150,25 @@ void printCanvas(Canvas *canvas) {
     }
     printf("\n");
   }
+}
+
+void clearCanvas(Canvas *canvas) {
+  for (uint8_t i = 0; i < canvas->numRows; i++) {
+    for (uint8_t j = 0; j < canvas->numCols; j++) {
+      canvas->state.cells[i][j] = ' ';
+      canvas->state.colors[i][j] = (Color){0, 0, 0};
+    }
+  }
+}
+
+Canvas *resetCanvas(Canvas *canvas) {
+  for (uint8_t i = 0; i < canvas->numRows; i++) {
+    for (uint8_t j = 0; j < canvas->numCols; j++) {
+      canvas->state.cells[i][j] = ' ';
+    }
+  }
+  drawBorder(canvas);
+  return canvas;
 }
 
 Entity *createEntity(TYPE type, char c, uint8_t x, uint8_t y, uint8_t health, Color color, void (*moveFunc)(Canvas *canvas, Entity *entity)) {
@@ -318,34 +353,114 @@ void initializeEntityThreads(TYPE type, Canvas *canvas, uint8_t frameRate) {
   }
 }
 
-int8_t GameLoop(Canvas *canvas, uint8_t frameRate) {
+int8_t GameLoop(int8_t addPlayer, uint8_t numRows, uint8_t numCols, double fixed_update_rate, uint8_t frameRate) {
     setupFrameTimer(frameRate);
+    Canvas *canvas = initCanvas(numRows, numCols, ' '); 
+    Clock *clock = createClock();
+    initClock(clock, fixed_update_rate, frameRate);
+
+    Entity *player = NULL;
+    if (addPlayer) {
+    Entity *player = createEntity((TYPE){"PLAYER"}, 'O', rand() & canvas->numCols, rand() & canvas->numRows, 1, (Color){255, 0, 255}, NULL); 
+    addEntity(canvas, player);
+    }
 
     while (1) {
         if (frameFlag) {
             frameFlag = 0;
-
+            updateClock(clock);
             if (kbhit()) {
                 char c = getchar();
                 if (c == 'q') {
                     break;  
+                
                 }
+                  if (player != NULL) {
+                    movePlayer(canvas, player, c);
+                }
+
+              
             }
+
+              if (fixedUpdateReady(clock)) {
 
             for (size_t i = 0; i < canvas->state.entityCount; i++) {
                 Entity *entity = canvas->state.entities[i];
                 if (entity->moveFunc) {
-                    entity->moveFunc(canvas, entity); 
+                    entity->moveFunc(canvas, entity);  
                 }
             }
+      }
 
+            pthread_mutex_lock(&canvas->state.lock);  
             drawEntities(canvas);
             drawBorder(canvas);
+            pthread_mutex_unlock(&canvas->state.lock);  
 
-            printf("\033[H"); 
+            printf("\033[H\033[J");  
             printCanvas(canvas);
         }
     }
 
-    return 0; 
+    return 0;  
 }
+
+#if defined(__linux__)
+void handleMouseEvents(Canvas *canvas) {
+    int fd = open("/dev/input/event0", O_RDONLY);
+    if (fd == -1) {
+        perror("Opening device");
+        return;
+    }
+
+    struct input_event ie;
+    Pos mousePos = {0, 0};
+
+    while (read(fd, &ie, sizeof(struct input_event))) {
+        if (ie.type == EV_REL) {
+            if (ie.code == REL_X) mousePos.x += ie.value;
+            if (ie.code == REL_Y) mousePos.y += ie.value;
+        } else if (ie.type == EV_KEY && ie.code == BTN_LEFT && ie.value == 1) {
+            printf("Mouse click at (%d, %d)\n", mousePos.x, mousePos.y);
+        }
+    }
+
+    close(fd);
+}
+
+Pos getMousePos() {
+    int fd = open("/dev/input/event0", O_RDONLY);
+    if (fd == -1) {
+        perror("Opening device");
+        return (Pos){0, 0};
+    }
+
+    struct input_event ie;
+    Pos mousePos = {0, 0};
+
+    while (read(fd, &ie, sizeof(struct input_event))) {
+        if (ie.type == EV_REL) {
+            if (ie.code == REL_X) mousePos.x += ie.value;
+            if (ie.code == REL_Y) mousePos.y += ie.value;
+        }
+    }
+
+    close(fd);
+    return mousePos;
+}
+#elif defined(__APPLE__)
+void handleMouseEvents(Canvas *canvas) {
+    CGEventRef event = CGEventCreate(NULL);
+    CGPoint cursor = CGEventGetLocation(event);
+    printf("Mouse position: (%.0f, %.0f)\n", cursor.x, cursor.y);
+    CFRelease(event);
+}
+
+Pos getMousePos() {
+    CGEventRef event = CGEventCreate(NULL);
+    CGPoint cursor = CGEventGetLocation(event);
+    Pos pos = {cursor.x, cursor.y};
+    CFRelease(event);
+    return pos;
+}
+#endif

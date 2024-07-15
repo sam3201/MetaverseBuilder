@@ -1,8 +1,11 @@
+#ifndef NN_H
+#define NN_H
+
 #include <math.h>
 #include <stdio.h>
-#include <math.h>
 #include <stdlib.h>
-#include <stdio.h>
+
+typedef double (*ActivationFunction)(double);
 
 typedef struct {
   unsigned int numInputs; 
@@ -22,19 +25,29 @@ typedef struct {
   double error;
   double *gradient;
   double *gradientO;
+  ActivationFunction *hiddenActivations;
+  ActivationFunction *outputActivations;
+  ActivationFunction *hiddenActivationDerivatives;
+  ActivationFunction *outputActivationDerivative;
 } NN_t;
 
+NN_t *NN_create(unsigned int numInputs, unsigned int numHidden, unsigned int numOutput,ActivationFunction *hiddenActivations, ActivationFunction *outputActivations, ActivationFunction *hiddenActivationDerivatives, ActivationFunction *outputActivationDerivatives, double learningRate, double momentum);
 
-NN_t *NN_create(double *inputs, unsigned int numHidden, unsigned int numOutput, double learningRate, double momentum); 
 void NN_destroy(NN_t *nn);
-void add_matrices(double *C, double *A, double *B, unsigned int n);
-void subtract_matrices(double* C, double* A, double* B, unsigned int n);
-double* strassen_matmul(double* A, double* B, double* bias, unsigned int n); 
-double *matmul(double *A, double *B, double *C, unsigned int n);
-void forward(NN_t *nn, double *input); 
-void backward(NN_t *nn, double *target); 
+void forward(NN_t *nn, double *input);
+void backward(NN_t *nn, double *target);
+double *train(NN_t *nn, double *input, double *target, int num_samples, int num_epochs);
+
 double sigmoid(double x);
 double sigmoid_derivative(double x);
-double mean_squared_error(double *target, double *output, int num_samples); 
-double *train(NN_t *nn, double *input, double *target, int num_samples, int num_epochs); 
+double reLU(double x);
+double reLU_derivative(double x);
+double tanh_activation(double x);
+double tanh_derivative(double x);
 
+double mean_squared_error(double *target, double *output, int num_samples);
+double mean_squared_error_derivative(double *target, double *output, int num_samples);
+double cross_entropy(double *target, double *output, int num_samples);
+double cross_entropy_derivative(double *target, double *output, int num_samples);
+
+#endif 

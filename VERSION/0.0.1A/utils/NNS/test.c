@@ -19,15 +19,12 @@ int main(void) {
 
    NN_t* nn = NN_create(input, numHidden, numOutput, learningRate, momentum); 
 
-   unsigned int numEpoch = INFINITY; 
-   double * res = train(nn, input, target, 4, numEpoch);
-   for (unsigned int i = 0; i < sizeof(res) / sizeof(res[0]); i++) {
-     printf("%lf\n", res[i]);
-   }
-
-   for (unsigned int i = 0; i < sizeof(target) / sizeof(target[0]); i++) {
-    printf("%lf\n", target[i]);
-   }
+   unsigned int numEpoch = 10000; 
+   for (int epoch = 0; epoch < numEpoch; epoch++) {
+    forward(nn, input);
+    backward(nn, target);
+    printf("Epoch %d: Error = %.6f\n", epoch, nn->error);
+  }
 
   /*
   double *train(NN_t *nn, double *input, double *target, int num_samples, int num_epochs) {

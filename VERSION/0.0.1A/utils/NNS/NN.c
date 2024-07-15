@@ -2,36 +2,42 @@
 #include <stdlib.h>
 #include "NN.h"
 
-NN_t *NN_create(double *inputs, unsigned int numHidden, unsigned int numOutput, double learningRate, double momentum) {
+NN_t *NN_create(unsigned int numInputs, unsigned int numHidden, unsigned int numOutput,ActivationFunction *hiddenActivations, ActivationFunction *outputActivations, ActivationFunction *hiddenActivationDerivatives, ActivationFunction *outputActivationDerivatives, double learningRate, double momentum) {
   NN_t *nn = (NN_t *)malloc(sizeof(NN_t));
-  nn->inputs = inputs;
-  size_t numInputs = sizeof(nn->inputs) / sizeof(double);
+  if (!nn) return NULL;
+
+  nn->numInputs = numInputs;
+  nn->numHidden = numHidden;
   nn->numOutput = numOutput;
   nn->learningRate = learningRate;
   nn->momentum = momentum;
 
-  nn->inputs = (double *)malloc(sizeof(double) * numInputs);
-  for (unsigned int i = 0; i < numInputs; i++) {
-    nn->inputs[i] = inputs[i];
-  }
-  nn->hidden = (double *)malloc(sizeof(double) * numHidden);
-  for (unsigned int i = 0; i < numHidden; i++) {
-    nn->hidden[i] = rand() / (double)RAND_MAX;
-  }
-  nn->output = (double *)malloc(sizeof(double) * numOutput);
-  for (unsigned int i = 0; i < numOutput; i++) {
-    nn->output[i] = rand() / (double)RAND_MAX;
-  }
+  nn->inputs = (double *)calloc(numInputs, sizeof(double));
+  nn->hidden = (double *)calloc(numHidden, sizeof(double));
+  nn->output = (double *)calloc(numOutput, sizeof(double));
+
   nn->numWeights = numInputs * numHidden + numHidden * numOutput;
   nn->weights = (double *)malloc(sizeof(double) * nn->numWeights);
-  nn->weightsO = (double *)malloc(sizeof(double) * nn->numWeights);
+  nn->weightsO = (double *)calloc(nn->numWeights, sizeof(double));
 
   nn->numBiases = numHidden + numOutput;
   nn->biases = (double *)malloc(sizeof(double) * nn->numBiases);
-  nn->biasesO = (double *)malloc(sizeof(double) * nn->numBiases);
+  nn->biasesO = (double *)calloc(nn->numBiases, sizeof(double));
 
-  nn->gradient = (double *)malloc(sizeof(double) * nn->numWeights);
-  nn->gradientO = (double *)malloc(sizeof(double) * nn->numWeights);
+  nn->gradient = (double *)calloc(nn->numWeights, sizeof(double));
+  nn->gradientO = (double *)calloc(nn->numWeights, sizeof(double));
+
+  for (unsigned int i = 0; i < nn->numWeights; i++) {
+    nn->weights[i] = ((double)rand() / RAND_MAX) * 2 - 1;
+  }
+  for (unsigned int i = 0; i < nn->numBiases; i++) {
+    nn->biases[i] = ((double)rand() / RAND_MAX) * 2 - 1;  
+  }
+
+  nn->hiddenActivations = hiddenActivations;
+  nn->outputActivations = outputActivations;
+  nn->hiddenActivationDerivatives = hiddenActivationDerivatives;
+  nn->outputActivationDerivative = outputActivationDerivatives;
 
   return nn;
 }
@@ -48,6 +54,7 @@ void NN_destroy(NN_t *nn) {
   free(nn->gradientO);
   free(nn);
 }
+
 
 void add_matrices(double* C, double* A, double* B, unsigned int n) {
     for (int i = 0; i < n * n; i++) {
@@ -256,10 +263,54 @@ double sigmoid_derivative(double x) {
   return x * (1.0 - x);
 }
 
+double reLU(double x) {
+  return x > 0 ? x : 0;
+}
+
+double softmax(double x, double *xs) {
+  double sum = 0.0;
+  for (size_t i = 0; i < sizeof(xs)/sizeof(xs[0]); i++) {
+    sum += exp(xs[i]);
+  }
+  return exp(x) / sum;
+}
+
+double softmax_derivative(double x, double *xs) {
+  double sum = 0.0;
+  for (size_t i = 0; i < sizeof(xs)/sizeof(xs[0]); i++) {
+    sum += exp(xs[i]);
+  }
+  return exp(x) * sum;
+}
+
+double cross_entropy(double *target, double *output, int num_samples) {
+  double error = 0.0;
+  for (int i = 0; i < num_samples; i++) {
+    error -= target[i] * log(output[i]);
+  }
+  return error;
+}
+
+double cross_entropy_derivative(double *target, double *output, int num_samples) {
+  double error = 0.0;
+  for (int i = 0; i < num_samples; i++) {
+    error -= target[i] / output[i];
+  }
+  return error;
+}
+
 double mean_squared_error(double *target, double *output, int num_samples) {
   double error = 0.0;
   for (int i = 0; i < num_samples; i++) {
     error += (target[i] - output[i]) * (target[i] - output[i]);
+  }
+  return error / num_samples;
+}
+
+double mean_squared_error_derivative(double *target, double *output, int num_samples) {
+  double error = 0.0;
+  for (int i = 0; i < num_samples; i++) {
+    error += 2 * (target[i] - output[i]);
   }
   return error / num_samples;
 }

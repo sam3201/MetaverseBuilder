@@ -6,34 +6,194 @@
 #include <unistd.h>
 #include "../utils/environment.h"
 
-int run(uint8_t frameRate, uint8_t rows, uint8_t cols, uint8_t entityCount, Color playerColor) {
+#define MAX_PARTICLE 300
+
+typedef struct Particle Particle;
+
+typedef struct Particle {
+    Entity *entity;
+    void (*destroy)(Particle *);
+    Pos velocity;
+} Particle;
+
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t cond;
+    Particle *particles;
+    size_t maxParticles;
+    size_t currentParticle;
+} System;
+
+#define GRAVITY_STRENGTH 1.0 
+#define GRAVITY_MIN_DISTANCE 1.0
+#define DOWNWARD_VELOCITY 1.0 
+#define MOUSE_REPULSION_STRENGTH 10.0 
+#define MOUSE_MIN_DISTANCE 2.0 
+
+double *distance(Particle *A, Particle *B) {
+    double dx = A->entity->cell.pos.x - B->entity->cell.pos.x;
+    double dy = A->entity->cell.pos.y - B->entity->cell.pos.y;
+    double *dist = malloc(sizeof(double) * 2);
+    dist[0] = dx;
+    dist[1] = dy;
+    return dist;
+}
+
+void destroyParticle(Particle *particle) {
+    deleteEntity(particle->entity);
+    free(particle);
+}
+
+Particle *createParticle(Canvas *canvas, char particleChar, Color color) {
+    Particle *particle = malloc(sizeof(Particle));
+    if (!particle) {
+        fprintf(stderr, "Failed to allocate memory for particle\n");
+        return NULL;
+    }
+
+    Entity *entity = createEntity((TYPE){"PARTICLE"}, particleChar, rand() % canvas->numCols, rand() % canvas->numRows, 1, color, NULL);
+    if (!entity) {
+        fprintf(stderr, "Failed to create entity for particle\n");
+        free(particle);
+        return NULL;
+    }
+    addEntity(canvas, entity);
+
+    particle->entity = entity;
+    particle->destroy = destroyParticle;
+    particle->velocity.x = 0.0;
+    particle->velocity.y = 0.0;
+
+    return particle;
+}
+
+System *createSystem(unsigned int numParticles, Canvas *canvas) {
+    System *system = malloc(sizeof(System));
+    if (!system) {
+        fprintf(stderr, "Failed to allocate memory for particle system\n");
+        return NULL;
+    }
+
+    system->maxParticles = numParticles > MAX_PARTICLE ? MAX_PARTICLE : numParticles;
+    system->currentParticle = 0;
+    system->particles = malloc(sizeof(Particle) * system->maxParticles);
+    if (!system->particles) {
+        fprintf(stderr, "Failed to allocate memory for particles in system\n");
+        free(system);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < system->maxParticles; i++) {
+        Color color = {
+            .r = rand() % 256,
+            .g = rand() % 256,
+            .b = rand() % 256};
+        
+        Particle *particle = createParticle(canvas, '*', color);
+        if (particle) {
+            system->particles[i] = *particle;
+            system->currentParticle++;
+        } else {
+            fprintf(stderr, "Failed to create particle %zu\n", i + 1);
+        }
+    }
+
+    pthread_mutex_init(&system->mutex, NULL);
+    pthread_cond_init(&system->cond, NULL);
+
+    return system;
+}
+
+void destroySystem(System *system) {
+    for (size_t i = 0; i < system->currentParticle; i++) {
+        destroyParticle(&system->particles[i]);
+    }
+    free(system->particles);
+    free(system);
+}
+
+void applyGravity(Canvas *canvas, Particle *particle, Particle *otherParticle) {
+    double *dist = distance(particle, otherParticle);
+    double distanceSquared = dist[0] * dist[0] + dist[1] * dist[1];
+    if (distanceSquared > GRAVITY_MIN_DISTANCE) {
+        double gravityStrength = GRAVITY_STRENGTH / distanceSquared;
+        double gravity_dx = dist[0] * gravityStrength;
+        double gravity_dy = dist[1] * gravityStrength;
+        particle->velocity.x += gravity_dx;
+        particle->velocity.y += gravity_dy;
+    }
+    free(dist);
+}
+
+void applyMouseRepulsion(Canvas *canvas, Particle *particle, Pos mousePos) {
+    double dx = particle->entity->cell.pos.x - mousePos.x;
+    double dy = particle->entity->cell.pos.y - mousePos.y;
+    double distanceSquared = dx * dx + dy * dy;
+    if (distanceSquared > MOUSE_MIN_DISTANCE) {
+        double repulsionStrength = MOUSE_REPULSION_STRENGTH / distanceSquared;
+        double repulsion_dx = dx * repulsionStrength;
+        double repulsion_dy = dy * repulsionStrength;
+        particle->velocity.x += repulsion_dx;
+        particle->velocity.y += repulsion_dy;
+    }
+}
+
+void moveParticles(Canvas *canvas, System *system, Clock *clock) {
+    Pos mousePos = getMousePos();
+    printf("mouse pos: %d, %d\n", mousePos.x, mousePos.y);
+
+    for (size_t i = 0; i < system->maxParticles; i++) {
+        Particle *particle = &system->particles[i];
+
+        for (size_t j = 0; j < system->maxParticles; j++) {
+            if (i != j) {
+                applyGravity(canvas, particle, &system->particles[j]);
+            }
+        }
+
+        applyMouseRepulsion(canvas, particle, mousePos);
+
+        if (particle->entity->cell.pos.y >= canvas->numRows - 2) {
+            particle->entity->cell.pos.y = canvas->numRows - 2;  
+        } else {
+            particle->velocity.y += DOWNWARD_VELOCITY;
+
+            int dx = (int) particle->velocity.x;
+            int dy = (int) particle->velocity.y;
+
+            moveEntity(canvas, particle->entity, (Pos) {dx, dy});
+        }
+    }
+}
+
+int run(uint8_t frameRate, uint8_t rows, uint8_t cols, unsigned int numParticles, Color particleColor) {
     signal(SIGINT, handleSignal);
     srand((unsigned)time(NULL));
-    
-  
+
     Canvas *canvas = initCanvas(rows, cols, ' ');
     if (!canvas) {
         fprintf(stderr, "Failed to initialize canvas\n");
         return 1;
     }
 
-    for (int i = 0; i < entityCount; i++) {
-        Entity *enemy = createEntity((TYPE){"ENEMY"}, 'X', (rand() % (cols - 2)) + 1, (rand() % (rows - 2)) + 1, 3, (Color){255, 255, 255}, moveEnemy);
-        if (enemy) {
-            addEntity(canvas, enemy);
-        } else {
-            fprintf(stderr, "Failed to create enemy entity\n");
-        }
-    }
-    
-    Entity *player = createEntity((TYPE){"PLAYER"}, 'O', 1, 1, 1, playerColor, NULL);
-    if (player) {
-        addEntity(canvas, player);
-    } else {
-        fprintf(stderr, "Failed to create player entity\n");
+    System *particleSystem = createSystem(numParticles, canvas);
+    if (!particleSystem) {
+        fprintf(stderr, "Failed to create particle system\n");
+        freeCanvas(canvas);
+        return 1;
     }
 
-    char *title = "Game - WASD to move, Q to quit";
+    Clock *clock = createClock();
+    if (!clock) {
+        fprintf(stderr, "Failed to create clock\n");
+        destroySystem(particleSystem);
+        freeCanvas(canvas);
+        return 1;
+    }
+
+    initClock(clock, 60, 60); 
+
+    char *title = "Particle System";
     Color titleColor = {0, 255, 255};
     size_t titleLength = strlen(title);
     Entity **titleText = createText(title, 1, 1, titleColor, &titleLength);
@@ -48,8 +208,6 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols, uint8_t entityCount, Colo
 
     setRawMode(1);
     setupFrameTimer(frameRate);
-    initializeEntityThreads((TYPE){"ENEMY"}, canvas, frameRate);
-    initializeEntityThreads((TYPE){"SNAKE"}, canvas, frameRate);
 
     while (1) {
         if (frameFlag) {
@@ -59,8 +217,11 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols, uint8_t entityCount, Colo
                 if (c == 'q') {
                     break;
                 }
-                movePlayer(canvas, player, c);
             }
+
+            updateClock(clock);  
+
+            moveParticles(canvas, particleSystem, clock);
 
             drawEntities(canvas);
             drawBorder(canvas);
@@ -71,17 +232,14 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols, uint8_t entityCount, Colo
 
     setRawMode(0);
 
-    for (size_t i = 0; i < canvas->state.entityCount; i++) {
-        canvas->state.entities[i]->isAlive = 0;
-        pthread_join(canvas->state.entities[i]->thread, NULL);
-    }
-
+    destroyClock(clock);
+    destroySystem(particleSystem);
     freeCanvas(canvas);
 
     return 0;
 }
 
 int main(void) {
-  return run(30, 70, 150, 3, (Color){95, 144, 255}); 
+    return run(60, 40, 50, 300, (Color){95, 144, 255});
 }
 

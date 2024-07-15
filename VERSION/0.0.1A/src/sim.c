@@ -18,11 +18,10 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
 
     Canvas *canvas = env->canvas;
     drawBorder(canvas);
-
-    Element *element1 = element_new(canvas, 'o', (rand() % (cols - 2)) + 1, (rand() % (rows - 2)) + 1, (Color){(uint8_t)(rand() % 256), (uint8_t)(rand() % 256), (uint8_t)(rand() % 256)}, element_move);
-    addEntity(canvas, element1->bounding);
-    Element *element2 = element_new(canvas, 'o', (rand() % (cols - 2)) + 1, (rand() % (rows - 2)) + 1, (Color){(uint8_t)(rand() % 256), (uint8_t)(rand() % 256), (uint8_t)(rand() % 256)}, element_move);
-    addEntity(canvas, element2->bounding);
+   
+    Element *element1 = element_new(canvas, 'O', rand() % canvas->numCols, rand() % canvas->numRows, (Color){rand() % 256, rand() % 256, rand() % 256}, element_move);
+    Element *element2 = element_new(canvas, 'O', rand() % canvas->numCols, rand() % canvas->numRows, (Color){rand() % 256, rand() % 256, rand() % 256}, element_move);
+      
       
     char *title = "Sim Q: QUIT";
     Color titleColor = {0, 255, 255};
