@@ -82,18 +82,14 @@ Agent *createAgent(Canvas *canvas, const char *type, char symbol, size_t is_pred
     
     ActivationFunction hidden_activations[20];
     ActivationFunction hidden_derivatives[20];
-    ActivationFunction output_activations[4];
-    ActivationFunction output_derivatives[4];
     for (size_t i = 0; i < 20; i++) {
         hidden_activations[i] = sigmoid;
         hidden_derivatives[i] = sigmoid_derivative;
     }
-    for (size_t i = 0; i < 4; i++) {
-        output_activations[i] = tanh;
-        output_derivatives[i] = tanh_derivative;
-    }
+    ActivationFunction output_activations = tanh;
+    ActivationFunction output_derivatives = tanh_derivative;
 
-    agent->nn = NN_create(10, 20, 4, hidden_activations, hidden_derivatives, output_activations, output_derivatives, 0.01, 0.9);
+    agent->nn = NN_create(10, 20, 1, hidden_activations, hidden_derivatives, &output_activations, &output_derivatives, 0.01, 0.9);
     if (!agent->nn) {
         fprintf(stderr, "Failed to create neural network for agent\n");
         destroyAgent(agent);
@@ -180,18 +176,14 @@ void updateAgent(Agent *agent, Canvas *canvas, Simulation *simulation) {
 
     forward(agent->nn, inputs);
 
-    size_t max_index = 0;
-    for (size_t i = 1; i < 4; i++) {
-        if (agent->nn->output[i] > agent->nn->output[max_index]) {
-            max_index = i;
-        }
-    }
-
-    switch (max_index) {
-        case 0: agent->entity->cell.pos.y--; break;
-        case 1: agent->entity->cell.pos.y++; break;
-        case 2: agent->entity->cell.pos.x--; break;
-        case 3: agent->entity->cell.pos.x++; break;
+    if (agent->nn->output[0] == 0.25) {
+      agent->entity->cell.pos.y--; 
+    } else if (agent->nn->output[0] == 0.25) {
+      agent->entity->cell.pos.y++; 
+    } else if (agent->nn->output[0] == 0.75) {
+      agent->entity->cell.pos.x--; 
+    } else if (agent->nn->output[0] == 1.0) {
+      agent->entity->cell.pos.x++; 
     }
 
     if (agent->entity->cell.pos.x < 1) {
@@ -455,3 +447,4 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
 int main(void) {
     return run(FPS, 45, 155);
 }
+
