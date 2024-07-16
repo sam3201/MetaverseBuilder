@@ -453,5 +453,5 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
 }
 
 int main(void) {
-    return run(FPS, 66, 90);
+    return run(FPS, 45, 155);
 }
