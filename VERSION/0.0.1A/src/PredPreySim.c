@@ -93,7 +93,7 @@ Agent *createAgent(Canvas *canvas, const char *type, char symbol, size_t is_pred
         output_derivatives[i] = tanh_derivative;
     }
 
-    agent->nn = NN_create(5, 20, 4, hidden_activations, hidden_derivatives, output_activations, output_derivatives, 0.01, 0.9);
+    agent->nn = NN_create(10, 20, 4, hidden_activations, hidden_derivatives, output_activations, output_derivatives, 0.01, 0.9);
     if (!agent->nn) {
         fprintf(stderr, "Failed to create neural network for agent\n");
         destroyAgent(agent);
@@ -141,12 +141,42 @@ double calculatePreyFitness(Agent *prey) {
 }
 
 void updateAgent(Agent *agent, Canvas *canvas, Simulation *simulation) {
-    double inputs[5] = {0};
-    Agent *closest_agent = NULL;
-    Food *closest_food = NULL;
+    double inputs[10] = {
+        agent->entity->cell.pos.x / (double)canvas->numCols,
+        agent->entity->cell.pos.y / (double)canvas->numRows,
+        agent->entity->health / INITIAL_HEALTH,
+        agent->time_alive, 
+        (double)canvas->numRows,
+        (double)canvas->numCols,
+        (double)(canvas->numCols * canvas->numRows), 
+        0,
+        0, 
+        agent->is_predator 
+    };
+
     double min_agent_distance = INFINITY;
     double min_food_distance = INFINITY;
+    Agent *closest_agent = NULL;
+    Food *closest_food = NULL;
 
+    for (size_t i = 0; i < simulation->numPreys; i++) {
+        double dist = distance(agent->entity->cell.pos, simulation->preys[i]->entity->cell.pos);
+        if (dist < min_agent_distance) {
+            min_agent_distance = dist;
+            closest_agent = simulation->preys[i];
+        }
+    }
+
+    for (size_t i = 0; i < simulation->numFoods; i++) {
+        double dist = distance(agent->entity->cell.pos, simulation->foods[i]->entity->cell.pos);
+        if (dist < min_food_distance) {
+            min_food_distance = dist;
+            closest_food = simulation->foods[i];
+        }
+    }
+
+    inputs[7] = min_agent_distance / sqrt(canvas->numCols * canvas->numCols + canvas->numRows * canvas->numRows); // Normalize
+    inputs[8] = min_food_distance / sqrt(canvas->numCols * canvas->numCols + canvas->numRows * canvas->numRows); // Normalize
 
     forward(agent->nn, inputs);
 
@@ -162,16 +192,16 @@ void updateAgent(Agent *agent, Canvas *canvas, Simulation *simulation) {
         case 1: agent->entity->cell.pos.y++; break;
         case 2: agent->entity->cell.pos.x--; break;
         case 3: agent->entity->cell.pos.x++; break;
-  }
+    }
 
-    if (agent->entity->cell.pos.x < 1) { 
-    agent->entity->cell.pos.x = canvas->numCols - 2;
+    if (agent->entity->cell.pos.x < 1) {
+        agent->entity->cell.pos.x = canvas->numCols - 2;
     } else if (agent->entity->cell.pos.x >= canvas->numCols) {
         agent->entity->cell.pos.x = 1;
     }
   
     if (agent->entity->cell.pos.y < 1) {
-    agent->entity->cell.pos.y = canvas->numRows - 2;
+        agent->entity->cell.pos.y = canvas->numRows - 2;
     } else if (agent->entity->cell.pos.y >= canvas->numRows) {
         agent->entity->cell.pos.y = 1;
     }
@@ -197,15 +227,13 @@ void updateAgent(Agent *agent, Canvas *canvas, Simulation *simulation) {
 
     if (agent->entity->cell.c == 'X') {
         agent->fitness = calculatePredatorFitness(agent);
-        //backprop(agent->nn, &agent->fitness);
-  } 
+        backprop(agent->nn, &agent->fitness);
+    } 
     if (agent->entity->cell.c == 'O') {
         agent->fitness = calculatePreyFitness(agent);
-        //backprop(agent->nn, &agent->fitness);
-  } 
-    
+        backprop(agent->nn, &agent->fitness);
+    }
 }
-
 /*
 void mutate(NN_t *nn) {
     for (size_t i = 0; i < nn->numWeights; i++) {
@@ -418,6 +446,7 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
     setRawMode(0);
 
     destroySimulation(simulation);
+    destroyClock(clock);
     freeCanvas(canvas);
 
     return 0;
@@ -426,4 +455,3 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
 int main(void) {
     return run(FPS, 66, 90);
 }
-
