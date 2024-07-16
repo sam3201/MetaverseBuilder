@@ -2,44 +2,62 @@
 #include <stdlib.h>
 #include "NN.h"
 
-NN_t *NN_create(unsigned int numInputs, unsigned int numHidden, unsigned int numOutput,ActivationFunction *hiddenActivations, ActivationFunction *outputActivations, ActivationFunction *hiddenActivationDerivatives, ActivationFunction *outputActivationDerivatives, double learningRate, double momentum) {
-  NN_t *nn = (NN_t *)malloc(sizeof(NN_t));
-  if (!nn) return NULL;
+NN_t *NN_create(unsigned int numInputs, unsigned int numHidden, unsigned int numOutput,
+                ActivationFunction *hiddenActivations, ActivationFunction *hiddenActivationDerivatives,
+                ActivationFunction *outputActivations, ActivationFunction *outputActivationDerivatives,
+                double learningRate, double momentum) {
+    
+    NN_t *nn = (NN_t *)malloc(sizeof(NN_t));
+    if (!nn) return NULL;
 
-  nn->numInputs = numInputs;
-  nn->numHidden = numHidden;
-  nn->numOutput = numOutput;
-  nn->learningRate = learningRate;
-  nn->momentum = momentum;
+    nn->numInputs = numInputs;
+    nn->numHidden = numHidden;
+    nn->numOutput = numOutput;
+    nn->learningRate = learningRate;
+    nn->momentum = momentum;
 
-  nn->inputs = (double *)calloc(numInputs, sizeof(double));
-  nn->hidden = (double *)calloc(numHidden, sizeof(double));
-  nn->output = (double *)calloc(numOutput, sizeof(double));
+    nn->inputs = (double *)calloc(numInputs, sizeof(double));
+    nn->hidden = (double *)calloc(numHidden, sizeof(double));
+    nn->output = (double *)calloc(numOutput, sizeof(double));
 
-  nn->numWeights = numInputs * numHidden + numHidden * numOutput;
-  nn->weights = (double *)malloc(sizeof(double) * nn->numWeights);
-  nn->weightsO = (double *)calloc(nn->numWeights, sizeof(double));
+    nn->numWeights = numInputs * numHidden + numHidden * numOutput;
+    nn->weights = (double *)malloc(sizeof(double) * nn->numWeights);
+    nn->weightsO = (double *)calloc(nn->numWeights, sizeof(double));
 
-  nn->numBiases = numHidden + numOutput;
-  nn->biases = (double *)malloc(sizeof(double) * nn->numBiases);
-  nn->biasesO = (double *)calloc(nn->numBiases, sizeof(double));
+    nn->numBiases = numHidden + numOutput;
+    nn->biases = (double *)malloc(sizeof(double) * nn->numBiases);
+    nn->biasesO = (double *)calloc(nn->numBiases, sizeof(double));
 
-  nn->gradient = (double *)calloc(nn->numWeights, sizeof(double));
-  nn->gradientO = (double *)calloc(nn->numWeights, sizeof(double));
+    nn->gradient = (double *)calloc(nn->numWeights, sizeof(double));
+    nn->gradientO = (double *)calloc(nn->numWeights, sizeof(double));
 
-  for (unsigned int i = 0; i < nn->numWeights; i++) {
-    nn->weights[i] = ((double)rand() / RAND_MAX) * 2 - 1;
-  }
-  for (unsigned int i = 0; i < nn->numBiases; i++) {
-    nn->biases[i] = ((double)rand() / RAND_MAX) * 2 - 1;  
-  }
+    for (unsigned int i = 0; i < nn->numWeights; i++) {
+        nn->weights[i] = ((double)rand() / RAND_MAX) * 2 - 1;
+    }
+    for (unsigned int i = 0; i < nn->numBiases; i++) {
+        nn->biases[i] = ((double)rand() / RAND_MAX) * 2 - 1;  
+    }
 
-  nn->hiddenActivations = hiddenActivations;
-  nn->outputActivations = outputActivations;
-  nn->hiddenActivationDerivatives = hiddenActivationDerivatives;
-  nn->outputActivationDerivative = outputActivationDerivatives;
+    nn->hiddenActivations = (ActivationFunction *)malloc(numHidden * sizeof(ActivationFunction));
+    nn->outputActivations = (ActivationFunction *)malloc(numOutput * sizeof(ActivationFunction));
+    nn->hiddenActivationDerivatives = (ActivationFunction *)malloc(numHidden * sizeof(ActivationFunction));
+    nn->outputActivationDerivatives = (ActivationFunction *)malloc(numOutput * sizeof(ActivationFunction));
 
-  return nn;
+    if (!nn->hiddenActivations || !nn->outputActivations || !nn->hiddenActivationDerivatives || !nn->outputActivationDerivatives) {
+        NN_destroy(nn);
+        return NULL;
+    }
+
+    for (unsigned int i = 0; i < numHidden; i++) {
+        nn->hiddenActivations[i] = hiddenActivations[i];
+        nn->hiddenActivationDerivatives[i] = hiddenActivationDerivatives[i];
+    }
+    for (unsigned int i = 0; i < numOutput; i++) {
+        nn->outputActivations[i] = outputActivations[i];
+        nn->outputActivationDerivatives[i] = outputActivationDerivatives[i];
+    }
+
+    return nn;
 }
 
 void NN_destroy(NN_t *nn) {
@@ -197,24 +215,24 @@ void forward(NN_t *nn, double *input) {
     for (int i = 0; i < nn->numInputs; i++) {
         nn->inputs[i] = input[i];
     }
-
     double *hidden_input = matmul(nn->inputs, nn->weights, nn->biases, nn->numHidden);
     for (int i = 0; i < nn->numHidden; i++) {
-        nn->hidden[i] = 1.0 / (1.0 + exp(-hidden_input[i]));  
+        nn->hidden[i] = nn->hiddenActivations[i](hidden_input[i]);  
     }
     free(hidden_input);
 
     double *output_input = matmul(nn->hidden, &nn->weights[nn->numInputs * nn->numHidden], &nn->biases[nn->numHidden], nn->numOutput);
     for (int i = 0; i < nn->numOutput; i++) {
-        nn->output[i] = 1.0 / (1.0 + exp(-output_input[i]));  
+        nn->output[i] = nn->outputActivations[i](output_input[i]);  
     }
     free(output_input);
 }
 
-void backward(NN_t *nn, double *target) {
+void backprop(NN_t *nn, double *target) {
     double *output_error = (double *)malloc(sizeof(double) * nn->numOutput);
     for (int i = 0; i < nn->numOutput; i++) {
-        output_error[i] = (nn->output[i] - target[i]) * nn->output[i] * (1 - nn->output[i]);
+        double derivative = nn->outputActivationDerivatives[i](nn->output[i]);
+        output_error[i] = (nn->output[i] - target[i]) * derivative;
     }
 
     double *hidden_error = (double *)malloc(sizeof(double) * nn->numHidden);
@@ -223,7 +241,8 @@ void backward(NN_t *nn, double *target) {
         for (int j = 0; j < nn->numOutput; j++) {
             hidden_error[i] += output_error[j] * nn->weights[nn->numInputs * nn->numHidden + j * nn->numHidden + i];
         }
-        hidden_error[i] *= nn->hidden[i] * (1 - nn->hidden[i]);
+        double derivative = nn->hiddenActivationDerivatives[i](nn->hidden[i]);
+        hidden_error[i] *= derivative;
     }
 
     for (int i = 0; i < nn->numOutput; i++) {
@@ -246,11 +265,6 @@ void backward(NN_t *nn, double *target) {
         nn->biases[i] += -nn->learningRate * hidden_error[i];
     }
 
-    nn->error = 0.0;
-    for (int i = 0; i < nn->numOutput; i++) {
-        nn->error += 0.5 * (target[i] - nn->output[i]) * (target[i] - nn->output[i]);
-    }
-
     free(output_error);
     free(hidden_error);
 }
@@ -263,8 +277,20 @@ double sigmoid_derivative(double x) {
   return x * (1.0 - x);
 }
 
-double reLU(double x) {
+double tanh(double x) {
+  return exp(x) - exp(-x) / exp(x) + exp(-x);; 
+}
+
+double tanh_derivative(double x) {
+  return 1 - x * x;
+}
+
+double relu(double x) {
   return x > 0 ? x : 0;
+}
+
+double relu_derivative(double x) {
+  return x > 0 ? 1 : 0;
 }
 
 double softmax(double x, double *xs) {
@@ -319,7 +345,7 @@ double *train(NN_t *nn, double *input, double *target, int num_samples, int num_
   for (int epoch = 0; epoch < num_epochs; epoch++) {
     for (int i = 0; i < num_samples; i++) {
       forward(nn, input + i * nn->numInputs);
-      backward(nn, target + i * nn->numOutput);
+      backprop(nn, target + i * nn->numOutput);
     }
     printf("Epoch %d: Error = %.6f\n", epoch, nn->error);
   }

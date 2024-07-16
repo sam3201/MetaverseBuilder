@@ -8,11 +8,11 @@
 #include "../utils/environment.h"
 #include "../utils/NNs/NN.h"
 
+#define FPS 15 
 #define MAX_AGENTS 10
 #define MAX_PREDATORS 5
 #define MAX_PREY 10 
 #define MAX_FOOD 15
-#define FPS 60
 #define INITIAL_HEALTH 1000
 #define HEALTH_DECAY_RATE 0.1
 #define CATCH_DISTANCE 1 
@@ -162,7 +162,7 @@ void updateAgent(Agent *agent, Canvas *canvas, Simulation *simulation) {
         case 1: agent->entity->cell.pos.y++; break;
         case 2: agent->entity->cell.pos.x--; break;
         case 3: agent->entity->cell.pos.x++; break;
-    }
+  }
 
     if (agent->entity->cell.pos.x < 1) { 
     agent->entity->cell.pos.x = canvas->numCols - 2;
@@ -364,7 +364,7 @@ void drawSimulation(Canvas *canvas, Simulation *simulation) {
     }
 }
 
-size_t run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
+int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
     signal(SIGINT, handleSignal);
     srand((unsigned)time(NULL));
 
@@ -424,6 +424,6 @@ size_t run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
 }
 
 int main(void) {
-    return run(FPS, 40, 50);
+    return run(FPS, 66, 90);
 }
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-read -p "Enter 'sim', 'game', 'cite', 'server', 'client', or 'PredPreySim': " file
+read -p "Enter 'sim', 'game', 'cite', 'server', 'client', or 'PredPreySim', 'Snakes': " file
 
 if [ -z "$file" ]; then
     echo "No input provided. Exiting."
@@ -55,7 +55,22 @@ case "$file" in
     fi
     ;;
   "PredPreySim")
-    compile_and_run "src/PredPreySim.c" "PredPreySim" "utils/environment.c" "utils/NNS/NN.c" "-pthread" "-lm" "-framework" "CoreFoundation" "-framework" "CoreGraphics"
+   gcc "src/PredPreySim.c" -o "PredPreySim" "utils/environment.c" "utils/NNS/NN.c" "-pthread" "-lm" "-framework" "CoreFoundation" "-framework" "CoreGraphics"
+   if [ $? -eq 0 ]; then
+     ./PredPreySim
+     rm PredPreySim
+  else
+    echo "Compilation failed for PredPreySim."
+  fi
+    ;;
+  "Snakes")
+   gcc "src/Snakes.c" -o "Snakes" "utils/environment.c" "utils/NNS/NN.c" "-pthread" "-lm" "-framework" "CoreFoundation" "-framework" "CoreGraphics" 
+   if [ $? -eq 0 ]; then
+     ./Snakes
+     rm Snakes
+     else
+     echo "Compilation failed for Snakes."
+   fi
     ;;
   *)
     echo "Invalid Option: $file"

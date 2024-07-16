@@ -28,20 +28,22 @@ typedef struct {
   ActivationFunction *hiddenActivations;
   ActivationFunction *outputActivations;
   ActivationFunction *hiddenActivationDerivatives;
-  ActivationFunction *outputActivationDerivative;
+  ActivationFunction *outputActivationDerivatives;
 } NN_t;
 
 NN_t *NN_create(unsigned int numInputs, unsigned int numHidden, unsigned int numOutput,ActivationFunction *hiddenActivations, ActivationFunction *outputActivations, ActivationFunction *hiddenActivationDerivatives, ActivationFunction *outputActivationDerivatives, double learningRate, double momentum);
 
 void NN_destroy(NN_t *nn);
+
 void forward(NN_t *nn, double *input);
-void backward(NN_t *nn, double *target);
-double *train(NN_t *nn, double *input, double *target, int num_samples, int num_epochs);
+void backprop(NN_t *nn, double *target);
+double *train(NN_t *nn, double *input, double *target, int num_samples, int num_epochs); 
+void test(NN_t *nn, double *inputs, double *targets, int num_samples); 
 
 double sigmoid(double x);
 double sigmoid_derivative(double x);
-double reLU(double x);
-double reLU_derivative(double x);
+double relu(double x);
+double relu_derivative(double x);
 double tanh_activation(double x);
 double tanh_derivative(double x);
 

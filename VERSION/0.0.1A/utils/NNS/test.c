@@ -2,45 +2,49 @@
 #include "NN.h"
 
 int main(void) {
-  printf("Hello World\n");
+    printf("Hello World\n");
 
-   unsigned int numInputs = 2;
-    unsigned int numHidden = 3;
-    unsigned int numOutput = 1;
+    unsigned int numInputs = 5;
+    unsigned int numHidden = 20;
+    unsigned int numOutput = 4;
     double learningRate = 0.1;
     double momentum = 0.9;
 
-   double input[4] = {0.0, 0.0, 0.0, 1.0}; 
-   double target[1] = {1.0}; 
-   double hidden[2];
-   double hiddenO[1];
-   double output[2];
+    double input[2] = {0.0, 0.0}; 
+    double target[1] = {1.0};      
 
+    unsigned int numEpochs = 10000; 
 
-   NN_t* nn = NN_create(input, numHidden, numOutput, learningRate, momentum); 
+    ActivationFunction sigmoid_activations[20];
+    ActivationFunction sigmoid_derivatives[20];
+    ActivationFunction tanh_activations[4];
+    ActivationFunction tanh_derivatives[4];
 
-   unsigned int numEpoch = 10000; 
-   for (int epoch = 0; epoch < numEpoch; epoch++) {
-    forward(nn, input);
-    backward(nn, target);
-    printf("Epoch %d: Error = %.6f\n", epoch, nn->error);
-  }
-
-  /*
-  double *train(NN_t *nn, double *input, double *target, int num_samples, int num_epochs) {
-  for (int epoch = 0; epoch < num_epochs; epoch++) {
-    for (int i = 0; i < num_samples; i++) {
-      forward(nn, input + i * nn->numInputs);
-      backward(nn, target + i * nn->numOutput);
+    for (int i = 0; i < 20; i++) {
+        sigmoid_activations[i] = sigmoid;
+        sigmoid_derivatives[i] = sigmoid_derivative;
     }
-    printf("Epoch %d: Error = %.6f\n", epoch, nn->error);
-  }
-  return nn->output;
-  }
-  */
+    for (int i = 0; i < 4; i++) {
+        tanh_activations[i] = tanh;
+        tanh_derivatives[i] = tanh_derivative;
+    }
 
+NN_t *nn = NN_create(numInputs, numHidden, numOutput, 
+                     sigmoid_activations, sigmoid_derivatives, 
+                     tanh_activations, tanh_derivatives, 
+                     learningRate, momentum);
+if (!nn) {
+    fprintf(stderr, "Failed to create neural network\n");
+    return 1;
+};
+    for (int epoch = 0; epoch < numEpochs; epoch++) {
+        forward(nn, input);
+        backprop(nn, target);
+        
+    }
+    printf("Error = %.6f\n", nn->error);
+    NN_destroy(nn);
 
-   NN_destroy(nn);
-
-  return 0;
+    return 0;
 }
+
