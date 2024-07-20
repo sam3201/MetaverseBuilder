@@ -8,19 +8,29 @@
 #include "../utils/environment.h"
 #include "../utils/NNs/NN.h"
 
-#define FPS 15 
+#define FPS 120 
 #define MAX_AGENTS 10
 #define MAX_PREDATORS 5
 #define MAX_PREY 10 
 #define MAX_FOOD 15
 #define INITIAL_HEALTH 1000
-#define HEALTH_DECAY_RATE 0.1
+#define HEALTH_DECAY_RATE 0 
 #define CATCH_DISTANCE 1 
 #define PREDATOR_GAIN 100 
-#define PREY_GAIN 50
+#define PREY_GAIN 100 
 #define FOOD_RESPAWN_RATE 0.02
-//#define MUTATION_RATE 1 
-//#define CROSSOVER_RATE 0.1
+#define MUTATION_RATE 1 
+#define CROSSOVER_RATE 0.1 
+
+typedef enum {
+  UP,
+  DOWN,
+  LEFT,
+  RIGHT,
+  NUM_DIRECTIONS
+} Direction;
+
+Direction Directions[NUM_DIRECTIONS] = {UP, DOWN, LEFT, RIGHT};
 
 typedef struct {
     NN_t *nn;
@@ -28,6 +38,7 @@ typedef struct {
     double fitness;
     size_t is_predator;
     size_t time_alive;
+    Direction dir;
 } Agent;
 
 typedef struct {
@@ -46,6 +57,35 @@ typedef struct {
 double distance(Pos A, Pos B) {
     return sqrt(pow(A.x - B.x, 2) + pow(A.y - B.y, 2));
 }
+double calculatePredatorFitness(Agent *predator) {
+    return 1 / 1 + predator->entity->health + predator->time_alive;
+}
+
+double calculatePreyFitness(Agent *prey) {
+    return 1 / 1 + prey->entity->health + prey->time_alive; 
+}
+
+double *one_hot_encode(Simulation *simulation, Canvas *canvas) {
+    size_t canvas_size = canvas->numRows * canvas->numCols;
+
+    double *one_hot_encoded = malloc(canvas_size * sizeof(double)); 
+
+    memset(one_hot_encoded, 0, canvas_size * sizeof(double)); 
+  
+    for (size_t i = 0; i < simulation->numPredators; i++) {
+        one_hot_encoded[canvas_size - simulation->predators[i]->entity->cell.pos.y * canvas->numCols + simulation->predators[i]->entity->cell.pos.x] = 1;
+    }
+  
+    for (size_t i = 0; i < simulation->numPreys; i++) {
+        one_hot_encoded[canvas_size - simulation->preys[i]->entity->cell.pos.y * canvas->numCols + simulation->preys[i]->entity->cell.pos.x] = 3;
+    }
+  
+    for (size_t i = 0; i < simulation->numFoods; i++) {
+        one_hot_encoded[canvas_size - simulation->foods[i]->entity->cell.pos.y * canvas->numCols + simulation->foods[i]->entity->cell.pos.x] = 2;
+    }
+    
+    return one_hot_encoded;
+}
 
 void destroyAgent(Agent *agent) {
     NN_destroy(agent->nn);
@@ -56,6 +96,82 @@ void destroyAgent(Agent *agent) {
 void destroyFood(Food *food) {
     deleteEntity(food->entity);
     free(food);
+}
+
+void updateAgent(Agent *agent, Canvas *canvas, Simulation *simulation) {
+    size_t inputSize = canvas->numRows * canvas->numCols;
+    double *inputs = malloc(sizeof(double) * inputSize);
+    inputs = one_hot_encode(simulation, canvas);
+
+    forward(agent->nn, inputs);
+    if (agent->nn->output[0] != 0.25 && agent->nn->output[0] != 0.75 && agent->nn->output[0] != 1.0) {
+        agent->dir = Directions[rand() % NUM_DIRECTIONS];
+    }
+
+    if (agent->nn->output[0] == 0.25) {
+        agent->dir = UP;
+    } else if (agent->nn->output[0] == 0.25) {
+        agent->dir = DOWN;
+    } else if (agent->nn->output[0] == 0.75) {
+        agent->dir = LEFT;  
+    } else if (agent->nn->output[0] == 1.0) {
+        agent->dir = RIGHT;
+    }
+
+    if (agent->dir == UP) {
+        agent->entity->cell.pos.y--;
+    } else if (agent->dir == DOWN) {
+        agent->entity->cell.pos.y++;
+    } else if (agent->dir == LEFT) {
+        agent->entity->cell.pos.x--;
+    } else if (agent->dir == RIGHT) {
+        agent->entity->cell.pos.x++;
+    }
+     
+    if (agent->entity->cell.pos.x < 1) {
+        agent->entity->cell.pos.x = canvas->numCols - 2;
+    } else if (agent->entity->cell.pos.x >= canvas->numCols) {
+        agent->entity->cell.pos.x = 1;
+    }
+  
+    if (agent->entity->cell.pos.y < 1) {
+        agent->entity->cell.pos.y = canvas->numRows - 2;
+    } else if (agent->entity->cell.pos.y >= canvas->numRows) {
+        agent->entity->cell.pos.y = 1;
+    }
+
+    agent->entity->health -= HEALTH_DECAY_RATE;
+    agent->time_alive++;
+
+    if (agent->is_predator) {
+        for (size_t i = 0; i < simulation->numPreys; i++) {
+            double dist = distance(agent->entity->cell.pos, simulation->preys[i]->entity->cell.pos);
+            if (dist < CATCH_DISTANCE) {
+                agent->entity->health += PREDATOR_GAIN;
+                simulation->preys[i]->entity->health -= PREDATOR_GAIN;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < simulation->numFoods; i++) {
+            double dist = distance(agent->entity->cell.pos, simulation->foods[i]->entity->cell.pos);
+            if (dist < CATCH_DISTANCE) {
+                agent->entity->health += PREY_GAIN;
+                destroyFood(simulation->foods[i]);
+                simulation->foods[i] = simulation->foods[--simulation->numFoods];
+                break;
+            }
+        }
+    }
+
+    if (agent->entity->cell.c == 'X') {
+        agent->fitness = calculatePredatorFitness(agent);
+        backprop(agent->nn, &agent->fitness);
+    } else if (agent->entity->cell.c == 'O') {
+        agent->fitness = calculatePreyFitness(agent);
+        backprop(agent->nn, &agent->fitness);
+    }
+
+    free(inputs);
 }
 
 Agent *createAgent(Canvas *canvas, const char *type, char symbol, size_t is_predator) {
@@ -75,11 +191,12 @@ Agent *createAgent(Canvas *canvas, const char *type, char symbol, size_t is_pred
     addEntity(canvas, entity);
 
     agent->entity = entity;
+    agent->dir = Directions[rand() % NUM_DIRECTIONS];
     agent->fitness = 0;
     agent->is_predator = is_predator;
     agent->entity->health = INITIAL_HEALTH;
     agent->time_alive = 0;
-    
+    agent->nn = NULL;
     ActivationFunction hidden_activations[20];
     ActivationFunction hidden_derivatives[20];
     for (size_t i = 0; i < 20; i++) {
@@ -89,7 +206,7 @@ Agent *createAgent(Canvas *canvas, const char *type, char symbol, size_t is_pred
     ActivationFunction output_activations = tanh;
     ActivationFunction output_derivatives = tanh_derivative;
 
-    agent->nn = NN_create(10, 20, 1, hidden_activations, hidden_derivatives, &output_activations, &output_derivatives, 0.01, 0.9);
+    agent->nn = NN_create(10, 20, 1, hidden_activations, hidden_derivatives, &output_activations, &output_derivatives, 1, 1);
     if (!agent->nn) {
         fprintf(stderr, "Failed to create neural network for agent\n");
         destroyAgent(agent);
@@ -128,105 +245,6 @@ size_t checkAliveEntities(Simulation *simulation) {
     return 0;
 }
 
-double calculatePredatorFitness(Agent *predator) {
-    return 1 / 1 + predator->entity->health + predator->time_alive;
-}
-
-double calculatePreyFitness(Agent *prey) {
-    return 1 / 1 + prey->entity->health + prey->time_alive; 
-}
-
-void updateAgent(Agent *agent, Canvas *canvas, Simulation *simulation) {
-    double inputs[10] = {
-        agent->entity->cell.pos.x / (double)canvas->numCols,
-        agent->entity->cell.pos.y / (double)canvas->numRows,
-        agent->entity->health / INITIAL_HEALTH,
-        agent->time_alive, 
-        (double)canvas->numRows,
-        (double)canvas->numCols,
-        (double)(canvas->numCols * canvas->numRows), 
-        0,
-        0, 
-        agent->is_predator 
-    };
-
-    double min_agent_distance = INFINITY;
-    double min_food_distance = INFINITY;
-    Agent *closest_agent = NULL;
-    Food *closest_food = NULL;
-
-    for (size_t i = 0; i < simulation->numPreys; i++) {
-        double dist = distance(agent->entity->cell.pos, simulation->preys[i]->entity->cell.pos);
-        if (dist < min_agent_distance) {
-            min_agent_distance = dist;
-            closest_agent = simulation->preys[i];
-        }
-    }
-
-    for (size_t i = 0; i < simulation->numFoods; i++) {
-        double dist = distance(agent->entity->cell.pos, simulation->foods[i]->entity->cell.pos);
-        if (dist < min_food_distance) {
-            min_food_distance = dist;
-            closest_food = simulation->foods[i];
-        }
-    }
-
-    inputs[7] = min_agent_distance / sqrt(canvas->numCols * canvas->numCols + canvas->numRows * canvas->numRows); // Normalize
-    inputs[8] = min_food_distance / sqrt(canvas->numCols * canvas->numCols + canvas->numRows * canvas->numRows); // Normalize
-
-    forward(agent->nn, inputs);
-
-    if (agent->nn->output[0] == 0.25) {
-      agent->entity->cell.pos.y--; 
-    } else if (agent->nn->output[0] == 0.25) {
-      agent->entity->cell.pos.y++; 
-    } else if (agent->nn->output[0] == 0.75) {
-      agent->entity->cell.pos.x--; 
-    } else if (agent->nn->output[0] == 1.0) {
-      agent->entity->cell.pos.x++; 
-    }
-
-    if (agent->entity->cell.pos.x < 1) {
-        agent->entity->cell.pos.x = canvas->numCols - 2;
-    } else if (agent->entity->cell.pos.x >= canvas->numCols) {
-        agent->entity->cell.pos.x = 1;
-    }
-  
-    if (agent->entity->cell.pos.y < 1) {
-        agent->entity->cell.pos.y = canvas->numRows - 2;
-    } else if (agent->entity->cell.pos.y >= canvas->numRows) {
-        agent->entity->cell.pos.y = 1;
-    }
-
-    agent->entity->health -= HEALTH_DECAY_RATE;
-    agent->time_alive++;
-
-    if (agent->is_predator && closest_agent && min_agent_distance < CATCH_DISTANCE) {
-        agent->entity->health += PREDATOR_GAIN;
-        closest_agent->entity->health -= PREDATOR_GAIN;
-    }
-
-    if (!agent->is_predator && closest_food && min_food_distance < CATCH_DISTANCE) {
-        agent->entity->health += PREY_GAIN;
-        for (size_t i = 0; i < simulation->numFoods; i++) {
-            if (simulation->foods[i] == closest_food) {
-                destroyFood(closest_food);
-                simulation->foods[i] = simulation->foods[--simulation->numFoods];
-                break;
-            }
-        }
-    }
-
-    if (agent->entity->cell.c == 'X') {
-        agent->fitness = calculatePredatorFitness(agent);
-        backprop(agent->nn, &agent->fitness);
-    } 
-    if (agent->entity->cell.c == 'O') {
-        agent->fitness = calculatePreyFitness(agent);
-        backprop(agent->nn, &agent->fitness);
-    }
-}
-/*
 void mutate(NN_t *nn) {
     for (size_t i = 0; i < nn->numWeights; i++) {
         if ((double)rand() / RAND_MAX < MUTATION_RATE) {
@@ -235,9 +253,7 @@ void mutate(NN_t *nn) {
     }
 }
 
-*/
 
-/*
 void crossover(NN_t *parent1, NN_t *parent2, NN_t *child) {
     for (size_t i = 0; i < parent1->numWeights; i++) {
         if ((double)rand() / RAND_MAX < CROSSOVER_RATE) {
@@ -247,15 +263,12 @@ void crossover(NN_t *parent1, NN_t *parent2, NN_t *child) {
         }
     }
 }
-*/
 
-size_t compareFitness(const void *a, const void *b) {
+int compareFitness(const void *a, const void *b) {
     Agent *agentA = *(Agent**)a;
     Agent *agentB = *(Agent**)b;
     return (agentB->fitness > agentA->fitness) - (agentB->fitness < agentA->fitness);
 }
-
-/*
 void evolvePopulation(Simulation *simulation) {
     qsort(simulation->predators, simulation->numPredators, sizeof(Agent*), compareFitness);
     qsort(simulation->preys, simulation->numPreys, sizeof(Agent*), compareFitness);
@@ -274,7 +287,6 @@ void evolvePopulation(Simulation *simulation) {
         mutate(simulation->preys[i]->nn);
     }
 }
-*/
 
 void updateSimulation(Simulation *simulation, Canvas *canvas) {
     for (size_t i = 0; i < simulation->numPredators; i++) {
@@ -402,7 +414,7 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
     }
 
     Clock *clock = createClock();
-    initClock(clock, 60, 60); 
+    initClock(clock, frameRate, frameRate);
 
     setRawMode(1);
     setupFrameTimer(frameRate);
@@ -417,9 +429,11 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
 
         if (frameFlag) {
             frameFlag = 0;
+            updateClock(clock);
+            
+            while (fixedUpdateReady(clock)) {
 
             clearCanvas(canvas);
-            updateClock(clock);
 
             updateSimulation(simulation, canvas);
             drawSimulation(canvas, simulation);
@@ -429,12 +443,12 @@ int run(uint8_t frameRate, uint8_t rows, uint8_t cols) {
 
             if (!checkAliveEntities(simulation)) {
                 printf("All entities have died. Restarting simulation...\n");
-                sleep(5); 
+                sleep(10); 
                 restartSimulation(simulation, canvas);
             }
         }
     }
-
+  }
     setRawMode(0);
 
     destroySimulation(simulation);
